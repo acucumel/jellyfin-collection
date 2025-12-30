@@ -49,19 +49,25 @@ def run(
     if config_path:
         settings.config_path = config_path
 
-    setup_logging(level=settings.log_level)
+    # Setup logging with file output
+    log_dir = settings.config_path / "logs"
+    setup_logging(level=settings.log_level, log_dir=log_dir)
 
     from jfc.services.runner import Runner
 
     async def _run():
         runner = Runner(settings)
         try:
-            stats = await runner.run(
+            report = await runner.run(
                 libraries=libraries,
                 collections=collections,
                 scheduled=False,
             )
-            console.print(f"\n[green]Completed![/green] {stats}")
+            console.print(
+                f"\n[green]Completed![/green] "
+                f"{report.successful_collections}/{report.total_collections} collections, "
+                f"+{report.total_items_added} -{report.total_items_removed} items"
+            )
         finally:
             await runner.close()
 
@@ -76,7 +82,8 @@ def schedule(
 ) -> None:
     """Run with scheduler for periodic updates."""
     settings = get_settings()
-    setup_logging(level=settings.log_level)
+    log_dir = settings.config_path / "logs"
+    setup_logging(level=settings.log_level, log_dir=log_dir)
 
     cron_expr = cron or settings.scheduler.cron
 

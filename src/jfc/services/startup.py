@@ -1,0 +1,219 @@
+"""Startup service for initialization and health checks."""
+
+from typing import Optional
+
+from loguru import logger
+
+from jfc.clients.jellyfin import JellyfinClient
+from jfc.clients.radarr import RadarrClient
+from jfc.clients.sonarr import SonarrClient
+from jfc.clients.tmdb import TMDbClient
+from jfc.clients.trakt import TraktClient
+from jfc.core.config import Settings
+from jfc.services.media_matcher import MediaMatcher
+
+
+BANNER = r"""
+     ██╗███████╗ ██████╗
+     ██║██╔════╝██╔════╝
+     ██║█████╗  ██║
+██   ██║██╔══╝  ██║
+╚█████╔╝██║     ╚██████╗
+ ╚════╝ ╚═╝      ╚═════╝
+Jellyfin Collection Manager
+"""
+
+
+class StartupService:
+    """Service for application startup and initialization."""
+
+    def __init__(
+        self,
+        settings: Settings,
+        jellyfin: JellyfinClient,
+        tmdb: TMDbClient,
+        trakt: Optional[TraktClient] = None,
+        radarr: Optional[RadarrClient] = None,
+        sonarr: Optional[SonarrClient] = None,
+    ):
+        self.settings = settings
+        self.jellyfin = jellyfin
+        self.tmdb = tmdb
+        self.trakt = trakt
+        self.radarr = radarr
+        self.sonarr = sonarr
+
+    def print_banner(self) -> None:
+        """Print startup banner."""
+        logger.info("=" * 60)
+        for line in BANNER.strip().split("\n"):
+            logger.info(line)
+        logger.info("=" * 60)
+        logger.info(f"Config path: {self.settings.config_path}")
+        logger.info(f"Dry run: {self.settings.dry_run}")
+        logger.info(f"Log level: {self.settings.log_level}")
+        logger.info("=" * 60)
+
+    async def check_connections(self) -> dict[str, bool]:
+        """
+        Check all API connections.
+
+        Returns:
+            Dictionary of service name -> connection status
+        """
+        results = {}
+
+        logger.info("Checking API connections...")
+
+        # Jellyfin (required)
+        try:
+            libraries = await self.jellyfin.get_libraries()
+            results["Jellyfin"] = True
+            logger.success(f"  ✓ Jellyfin: {len(libraries)} libraries found")
+            for lib in libraries:
+                logger.debug(f"       - {lib['Name']} ({lib.get('CollectionType', 'mixed')})")
+        except Exception as e:
+            results["Jellyfin"] = False
+            logger.error(f"  ✗ Jellyfin: {e}")
+
+        # TMDb (required)
+        try:
+            movies = await self.tmdb.get_popular_movies(limit=1)
+            results["TMDb"] = True
+            logger.success(f"  ✓ TMDb: Connected (language={self.settings.tmdb_language})")
+        except Exception as e:
+            results["TMDb"] = False
+            logger.error(f"  ✗ TMDb: {e}")
+
+        # Trakt (optional)
+        if self.trakt and self.settings.trakt_client_id:
+            try:
+                movies = await self.trakt.get_trending_movies(limit=1)
+                results["Trakt"] = True
+                logger.success("  ✓ Trakt: Connected")
+            except Exception as e:
+                results["Trakt"] = False
+                logger.warning(f"  ✗ Trakt: {e}")
+        else:
+            logger.info("  ⏭ Trakt: Not configured")
+
+        # Radarr (optional)
+        if self.radarr and self.settings.radarr_api_key:
+            try:
+                healthy = await self.radarr.health_check()
+                results["Radarr"] = healthy
+                if healthy:
+                    logger.success(f"  ✓ Radarr: {self.settings.radarr_url}")
+                else:
+                    logger.warning("  ⚠ Radarr: Health check failed")
+            except Exception as e:
+                results["Radarr"] = False
+                logger.warning(f"  ✗ Radarr: {e}")
+        else:
+            logger.info("  ⏭ Radarr: Not configured")
+
+        # Sonarr (optional)
+        if self.sonarr and self.settings.sonarr_api_key:
+            try:
+                healthy = await self.sonarr.health_check()
+                results["Sonarr"] = healthy
+                if healthy:
+                    logger.success(f"  ✓ Sonarr: {self.settings.sonarr_url}")
+                else:
+                    logger.warning("  ⚠ Sonarr: Health check failed")
+            except Exception as e:
+                results["Sonarr"] = False
+                logger.warning(f"  ✗ Sonarr: {e}")
+        else:
+            logger.info("  ⏭ Sonarr: Not configured")
+
+        # Summary
+        ok_count = sum(1 for v in results.values() if v)
+        total_count = len(results)
+        if ok_count == total_count:
+            logger.success(f"✓ Connection check: {ok_count}/{total_count} services OK")
+        else:
+            logger.warning(f"⚠ Connection check: {ok_count}/{total_count} services OK")
+
+        return results
+
+    async def preload_libraries(self, matcher: MediaMatcher) -> dict[str, int]:
+        """
+        Preload all Jellyfin libraries into cache.
+
+        Args:
+            matcher: MediaMatcher instance to populate
+
+        Returns:
+            Dictionary of library name -> item count
+        """
+        logger.info("Preloading Jellyfin libraries into cache...")
+
+        libraries = await self.jellyfin.get_libraries()
+        stats = {}
+
+        for lib in libraries:
+            lib_name = lib["Name"]
+            lib_id = lib["ItemId"]
+            collection_type = lib.get("CollectionType", "")
+
+            # Only preload movies and tvshows
+            if collection_type not in ("movies", "tvshows"):
+                logger.debug(f"  ⏭ {lib_name}: type={collection_type}")
+                continue
+
+            logger.info(f"  ⏳ Loading {lib_name}...")
+
+            try:
+                # Determine media type
+                from jfc.models.media import MediaType
+                media_type = MediaType.MOVIE if collection_type == "movies" else MediaType.SERIES
+
+                # Load library into matcher cache
+                await matcher._ensure_library_loaded(lib_id, media_type)
+
+                item_count = len(matcher._library_items.get(lib_id, {}))
+                stats[lib_name] = item_count
+                logger.success(f"  ✓ {lib_name}: {item_count} items with TMDb IDs")
+
+            except Exception as e:
+                logger.error(f"  ✗ {lib_name}: {e}")
+                stats[lib_name] = 0
+
+        # Summary
+        total_items = sum(stats.values())
+        logger.success(f"✓ Library cache: {total_items} total items across {len(stats)} libraries")
+
+        return stats
+
+    async def run_startup(self, matcher: Optional[MediaMatcher] = None) -> bool:
+        """
+        Run full startup sequence.
+
+        Args:
+            matcher: Optional MediaMatcher to preload libraries into
+
+        Returns:
+            True if startup was successful (required services OK)
+        """
+        # Print banner
+        self.print_banner()
+
+        # Check connections
+        results = await self.check_connections()
+
+        # Check required services
+        required_ok = results.get("Jellyfin", False) and results.get("TMDb", False)
+        if not required_ok:
+            logger.error("✗ Required services (Jellyfin, TMDb) are not available!")
+            return False
+
+        # Preload libraries if matcher provided
+        if matcher:
+            await self.preload_libraries(matcher)
+
+        logger.info("=" * 60)
+        logger.success("🚀 Startup complete - Ready to process collections")
+        logger.info("=" * 60)
+
+        return True

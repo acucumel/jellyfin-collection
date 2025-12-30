@@ -10,6 +10,7 @@ from loguru import logger
 from jfc.models.collection import (
     CollectionConfig,
     CollectionFilter,
+    CollectionOrder,
     CollectionSchedule,
     CollectionTemplate,
     SyncMode,
@@ -153,10 +154,15 @@ class KometaParser:
         # Parse plex_search (will work with Jellyfin)
         plex_search = config.get("plex_search")
 
+        # Parse collection_order
+        collection_order = self._parse_collection_order(config.get("collection_order"))
+
         return CollectionConfig(
             name=name,
             summary=config.get("summary"),
             sort_title=config.get("sort_title"),
+            poster=config.get("poster"),
+            collection_order=collection_order,
             visible_library=config.get("visible_library", template.visible_library if template else True),
             visible_home=config.get("visible_home", template.visible_home if template else False),
             visible_shared=config.get("visible_shared", template.visible_shared if template else False),
@@ -221,6 +227,49 @@ class KometaParser:
             result.origin_country_not = filters["origin_country.not"]
 
         return result
+
+    def _parse_collection_order(self, value: str | None) -> CollectionOrder:
+        """Parse collection_order value to enum."""
+        if not value:
+            return CollectionOrder.CUSTOM
+
+        value_lower = value.lower().strip()
+
+        # Map common names to enum values
+        order_mapping = {
+            # Custom (keep source order)
+            "custom": CollectionOrder.CUSTOM,
+            # Alphabetical
+            "alpha": CollectionOrder.SORT_NAME,
+            "alphabetical": CollectionOrder.SORT_NAME,
+            "sortname": CollectionOrder.SORT_NAME,
+            "name": CollectionOrder.SORT_NAME,
+            # Release date
+            "release": CollectionOrder.PREMIERE_DATE,
+            "premieredate": CollectionOrder.PREMIERE_DATE,
+            "release_date": CollectionOrder.PREMIERE_DATE,
+            "date": CollectionOrder.PREMIERE_DATE,
+            # Date added
+            "added": CollectionOrder.DATE_CREATED,
+            "datecreated": CollectionOrder.DATE_CREATED,
+            "date_added": CollectionOrder.DATE_CREATED,
+            # Community rating
+            "rating": CollectionOrder.COMMUNITY_RATING,
+            "communityrating": CollectionOrder.COMMUNITY_RATING,
+            "audience_rating": CollectionOrder.COMMUNITY_RATING,
+            # Critic rating
+            "critic": CollectionOrder.CRITIC_RATING,
+            "criticrating": CollectionOrder.CRITIC_RATING,
+            "critic_rating": CollectionOrder.CRITIC_RATING,
+            # Random
+            "random": CollectionOrder.RANDOM,
+        }
+
+        if value_lower in order_mapping:
+            return order_mapping[value_lower]
+
+        logger.warning(f"Unknown collection_order '{value}', defaulting to 'custom'")
+        return CollectionOrder.CUSTOM
 
     def _normalize_tmdb_discover(self, discover: dict[str, Any]) -> dict[str, Any]:
         """Normalize TMDb discover parameters."""

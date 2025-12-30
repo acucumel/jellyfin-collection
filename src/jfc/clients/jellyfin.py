@@ -1,11 +1,17 @@
 """Jellyfin API client for managing collections and media."""
 
+import base64
+import mimetypes
+from pathlib import Path
 from typing import Any, Optional
 
 from loguru import logger
 
 from jfc.clients.base import BaseClient
 from jfc.models.media import LibraryItem, MediaType
+
+# Supported image formats for posters
+SUPPORTED_IMAGE_FORMATS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 
 
 class JellyfinClient(BaseClient):
@@ -146,6 +152,7 @@ class JellyfinClient(BaseClient):
         self,
         tmdb_id: int,
         media_type: Optional[MediaType] = None,
+        library_id: Optional[str] = None,
     ) -> Optional[LibraryItem]:
         """
         Find item by TMDb ID.
@@ -153,42 +160,56 @@ class JellyfinClient(BaseClient):
         Args:
             tmdb_id: TMDb ID
             media_type: Filter by media type
+            library_id: Filter by library ID
 
         Returns:
             Library item if found
         """
         params = {
-            "AnyProviderIdEquals": f"Tmdb.{tmdb_id}",
             "Recursive": True,
             "Fields": "ProviderIds,Path",
-            "Limit": 1,
         }
+
+        if library_id:
+            params["ParentId"] = library_id
 
         if media_type == MediaType.MOVIE:
             params["IncludeItemTypes"] = "Movie"
         elif media_type == MediaType.SERIES:
             params["IncludeItemTypes"] = "Series"
 
+        # Try different provider ID formats for Jellyfin compatibility
+        # Format 1: HasTmdbId with specific search
+        params["HasTmdbId"] = True
+
         response = await self.get("/Items", params=params)
         response.raise_for_status()
 
         items = response.json().get("Items", [])
-        if items:
-            item = items[0]
-            provider_ids = item.get("ProviderIds", {})
-            return LibraryItem(
-                jellyfin_id=item["Id"],
-                title=item["Name"],
-                year=item.get("ProductionYear"),
-                media_type=self._map_item_type(item.get("Type", "")),
-                tmdb_id=int(provider_ids["Tmdb"]) if provider_ids.get("Tmdb") else None,
-                imdb_id=provider_ids.get("Imdb"),
-                tvdb_id=int(provider_ids["Tvdb"]) if provider_ids.get("Tvdb") else None,
-                library_id=item.get("ParentId", ""),
-                library_name="",
-                path=item.get("Path"),
-            )
 
+        # Filter results to find exact TMDb ID match
+        for item in items:
+            provider_ids = item.get("ProviderIds", {})
+            item_tmdb_id = provider_ids.get("Tmdb")
+
+            if item_tmdb_id and str(item_tmdb_id) == str(tmdb_id):
+                logger.debug(
+                    f"[Jellyfin] TMDb lookup: {tmdb_id} -> found '{item['Name']}' ({item.get('ProductionYear')})"
+                )
+                return LibraryItem(
+                    jellyfin_id=item["Id"],
+                    title=item["Name"],
+                    year=item.get("ProductionYear"),
+                    media_type=self._map_item_type(item.get("Type", "")),
+                    tmdb_id=int(item_tmdb_id),
+                    imdb_id=provider_ids.get("Imdb"),
+                    tvdb_id=int(provider_ids["Tvdb"]) if provider_ids.get("Tvdb") else None,
+                    library_id=item.get("ParentId", ""),
+                    library_name="",
+                    path=item.get("Path"),
+                )
+
+        logger.debug(f"[Jellyfin] TMDb lookup: {tmdb_id} -> not found in library")
         return None
 
     # =========================================================================
@@ -221,9 +242,15 @@ class JellyfinClient(BaseClient):
 
     async def get_collection(self, collection_id: str) -> Optional[dict[str, Any]]:
         """Get collection details."""
-        response = await self.get(f"/Items/{collection_id}")
+        # Use /Items endpoint with Ids filter (more reliable than /Items/{id})
+        params = {
+            "Ids": collection_id,
+            "Fields": "Overview,SortName,DisplayOrder",
+        }
+        response = await self.get("/Items", params=params)
         if response.status_code == 200:
-            return response.json()
+            items = response.json().get("Items", [])
+            return items[0] if items else None
         return None
 
     async def get_collection_items(self, collection_id: str) -> list[str]:
@@ -358,6 +385,7 @@ class JellyfinClient(BaseClient):
         name: Optional[str] = None,
         overview: Optional[str] = None,
         sort_name: Optional[str] = None,
+        display_order: Optional[str] = None,
     ) -> bool:
         """
         Update collection metadata.
@@ -367,6 +395,7 @@ class JellyfinClient(BaseClient):
             name: New name
             overview: New description
             sort_name: Sort title
+            display_order: Display order for items (e.g., "SortName", "PremiereDate", "DateCreated")
 
         Returns:
             True if successful
@@ -383,6 +412,8 @@ class JellyfinClient(BaseClient):
             collection["Overview"] = overview
         if sort_name:
             collection["SortName"] = sort_name
+        if display_order:
+            collection["DisplayOrder"] = display_order
 
         response = await self.post(f"/Items/{collection_id}", json=collection)
 
@@ -391,6 +422,85 @@ class JellyfinClient(BaseClient):
             return True
 
         logger.error(f"Failed to update collection metadata: {response.status_code}")
+        return False
+
+    async def upload_collection_poster(
+        self,
+        collection_id: str,
+        image_path: Path,
+    ) -> bool:
+        """
+        Upload a poster image for a collection.
+
+        Args:
+            collection_id: Collection ID
+            image_path: Path to the image file
+
+        Returns:
+            True if successful
+
+        Raises:
+            FileNotFoundError: If image file doesn't exist
+            ValueError: If image format is not supported
+        """
+        if not image_path.exists():
+            raise FileNotFoundError(f"Poster image not found: {image_path}")
+
+        suffix = image_path.suffix.lower()
+        if suffix not in SUPPORTED_IMAGE_FORMATS:
+            raise ValueError(
+                f"Unsupported image format: {suffix}. "
+                f"Supported formats: {', '.join(SUPPORTED_IMAGE_FORMATS)}"
+            )
+
+        # Determine content type
+        content_type = mimetypes.guess_type(str(image_path))[0]
+        if not content_type:
+            # Fallback mapping
+            content_type_map = {
+                ".jpg": "image/jpeg",
+                ".jpeg": "image/jpeg",
+                ".png": "image/png",
+                ".gif": "image/gif",
+                ".webp": "image/webp",
+            }
+            content_type = content_type_map.get(suffix, "image/jpeg")
+
+        # Read and base64 encode image data
+        # Jellyfin API requires base64-encoded image in the body, not raw binary
+        # See: https://github.com/jellyfin/jellyfin/issues/12447
+        image_data = image_path.read_bytes()
+        b64_image = base64.b64encode(image_data).decode("utf-8")
+
+        # Upload to Jellyfin - body is base64 string with image Content-Type
+        response = await self.post_binary(
+            f"/Items/{collection_id}/Images/Primary",
+            content=b64_image.encode("utf-8"),
+            content_type=content_type,
+        )
+
+        if response.status_code == 204:
+            logger.info(f"Uploaded poster for collection {collection_id}")
+            return True
+
+        # Jellyfin may return 400 even on successful uploads (known bug)
+        # Verify by checking if the image was actually uploaded
+        if response.status_code == 400:
+            images_response = await self.get(f"/Items/{collection_id}/Images")
+            if images_response.status_code == 200:
+                images = images_response.json()
+                # Check if a Primary image now exists
+                for img in images:
+                    if img.get("ImageType") == "Primary":
+                        logger.info(
+                            f"Uploaded poster for collection {collection_id} "
+                            "(API returned 400 but image was saved)"
+                        )
+                        return True
+
+        logger.error(
+            f"Failed to upload poster: {response.status_code} - {response.text}"
+        )
         return False
 
     # =========================================================================

@@ -2,10 +2,13 @@
 
 import asyncio
 import time
+import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
 from loguru import logger
+from rich.console import Console
 
 from jfc.clients.discord import DiscordWebhook
 from jfc.clients.jellyfin import JellyfinClient
@@ -16,8 +19,11 @@ from jfc.clients.trakt import TraktClient
 from jfc.core.config import Settings
 from jfc.models.collection import CollectionSchedule, ScheduleType
 from jfc.models.media import MediaType
+from jfc.models.report import CollectionReport, LibraryReport, RunReport
 from jfc.parsers.kometa import KometaParser
 from jfc.services.collection_builder import CollectionBuilder
+from jfc.services.report_generator import ReportGenerator
+from jfc.services.startup import StartupService
 
 
 class Runner:
@@ -94,12 +100,31 @@ class Runner:
             dry_run=self.dry_run,
         )
 
+        # Initialize report generator
+        self.report_generator = ReportGenerator(
+            console=Console(force_terminal=True),
+            output_dir=settings.config_path / "reports",
+        )
+
+        # Initialize startup service
+        self.startup = StartupService(
+            settings=settings,
+            jellyfin=self.jellyfin,
+            tmdb=self.tmdb,
+            trakt=self.trakt,
+            radarr=self.radarr,
+            sonarr=self.sonarr,
+        )
+
+        # Track if startup has been run
+        self._startup_done = False
+
     async def run(
         self,
         libraries: Optional[list[str]] = None,
         collections: Optional[list[str]] = None,
         scheduled: bool = False,
-    ) -> dict:
+    ) -> RunReport:
         """
         Run collection updates.
 
@@ -109,17 +134,26 @@ class Runner:
             scheduled: Whether this is a scheduled run
 
         Returns:
-            Run statistics
+            RunReport with detailed statistics
         """
-        start_time = time.time()
-        stats = {
-            "collections_updated": 0,
-            "items_added": 0,
-            "items_removed": 0,
-            "errors": 0,
-        }
+        # Run startup sequence (only once)
+        if not self._startup_done:
+            startup_ok = await self.startup.run_startup(matcher=self.builder.matcher)
+            self._startup_done = True
 
-        logger.info("Starting collection update run")
+            if not startup_ok:
+                logger.error("Startup failed - aborting run")
+                raise RuntimeError("Startup failed: required services not available")
+
+        # Initialize run report
+        run_report = RunReport(
+            run_id=str(uuid.uuid4())[:8],
+            start_time=datetime.now(),
+            scheduled=scheduled,
+            dry_run=self.dry_run,
+        )
+
+        logger.info(f"Starting collection update run (ID: {run_report.run_id})")
 
         # Parse all collections
         all_collections = self.parser.get_all_collections()
@@ -146,11 +180,27 @@ class Runner:
             # Determine media type from library name
             media_type = self._infer_media_type(library_name)
 
+            # Initialize library report
+            library_report = LibraryReport(
+                name=library_name,
+                media_type=media_type.value,
+            )
+
             # Get library ID
             library_id = library_id_map.get(library_name)
             if not library_id:
                 logger.warning(f"Library '{library_name}' not found in Jellyfin")
-                stats["errors"] += 1
+                # Add error report for this library
+                error_report = CollectionReport(
+                    name="[Library Not Found]",
+                    library=library_name,
+                    schedule="N/A",
+                    source_provider="N/A",
+                    success=False,
+                    error_message=f"Library '{library_name}' not found in Jellyfin",
+                )
+                library_report.collections.append(error_report)
+                run_report.libraries.append(library_report)
                 continue
 
             # Process collections
@@ -166,7 +216,7 @@ class Runner:
 
                 try:
                     # Build collection
-                    collection = await self.builder.build_collection(
+                    collection, col_report = await self.builder.build_collection(
                         config=config,
                         library_name=library_name,
                         library_id=library_id,
@@ -176,56 +226,83 @@ class Runner:
                     # Sync to Jellyfin
                     added, removed = await self.builder.sync_collection(
                         collection=collection,
+                        report=col_report,
                         add_missing_to_arr=True,
                     )
 
-                    stats["collections_updated"] += 1
-                    stats["items_added"] += added
-                    stats["items_removed"] += removed
+                    col_report.success = True
+                    library_report.collections.append(col_report)
 
-                    # Send changes notification
-                    if added > 0 or removed > 0:
-                        added_titles = [
-                            i.title for i in collection.items if i.matched
-                        ][:added]
-                        removed_titles = []  # We don't track removed titles easily
+                    # Send changes notification (with all details)
+                    has_changes = added > 0 or removed > 0
+                    has_arr = col_report.items_sent_to_radarr > 0 or col_report.items_sent_to_sonarr > 0
 
+                    if has_changes or has_arr:
                         await self.discord.send_collection_changes(
                             collection_name=config.name,
                             library=library_name,
-                            added=added_titles,
-                            removed=removed_titles,
+                            added=col_report.added_titles,
+                            removed=col_report.removed_titles,
+                            items_fetched=col_report.items_fetched,
+                            items_matched=col_report.items_matched,
+                            items_missing=col_report.items_missing,
+                            match_rate=col_report.match_rate,
+                            source_provider=col_report.source_provider,
+                            radarr_titles=col_report.radarr_titles,
+                            sonarr_titles=col_report.sonarr_titles,
                         )
 
                 except Exception as e:
                     logger.error(f"Error processing collection '{config.name}': {e}")
-                    stats["errors"] += 1
+
+                    # Create error report
+                    error_report = CollectionReport(
+                        name=config.name,
+                        library=library_name,
+                        schedule=config.schedule.schedule_type.value,
+                        source_provider="N/A",
+                        success=False,
+                        error_message=str(e),
+                    )
+                    library_report.collections.append(error_report)
 
                     await self.discord.send_error(
                         title=f"Collection Error: {config.name}",
                         message=str(e),
                     )
 
-        # Calculate duration
-        duration = time.time() - start_time
+            run_report.libraries.append(library_report)
+
+        # Finalize report
+        run_report.finalize()
 
         # Send run end notification
         await self.discord.send_run_end(
-            duration_seconds=duration,
-            collections_updated=stats["collections_updated"],
-            items_added=stats["items_added"],
-            items_removed=stats["items_removed"],
-            errors=stats["errors"],
+            duration_seconds=run_report.duration_seconds,
+            collections_updated=run_report.successful_collections,
+            items_added=run_report.total_items_added,
+            items_removed=run_report.total_items_removed,
+            errors=run_report.failed_collections,
+            radarr_requests=run_report.total_radarr_requests,
+            sonarr_requests=run_report.total_sonarr_requests,
         )
+
+        # Print and save report
+        self.report_generator.print_run_report(run_report)
+
+        try:
+            self.report_generator.save_report(run_report)
+        except Exception as e:
+            logger.warning(f"Failed to save report: {e}")
 
         logger.info(
-            f"Run completed in {duration:.1f}s: "
-            f"{stats['collections_updated']} collections, "
-            f"+{stats['items_added']} -{stats['items_removed']} items, "
-            f"{stats['errors']} errors"
+            f"Run completed in {run_report.duration_seconds:.1f}s: "
+            f"{run_report.successful_collections} collections, "
+            f"+{run_report.total_items_added} -{run_report.total_items_removed} items, "
+            f"{run_report.failed_collections} errors"
         )
 
-        return stats
+        return run_report
 
     async def close(self) -> None:
         """Close all client connections."""

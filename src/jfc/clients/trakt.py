@@ -2,6 +2,8 @@
 
 from typing import Any, Optional
 
+from loguru import logger
+
 from jfc.clients.base import BaseClient
 from jfc.models.media import MediaItem, MediaType, Movie, Series
 
@@ -39,55 +41,73 @@ class TraktClient(BaseClient):
         self.client_secret = client_secret
         self.access_token = access_token
 
+    def _log_items(
+        self,
+        source: str,
+        items: list[MediaItem],
+        params: Optional[dict[str, Any]] = None,
+    ) -> None:
+        """Log fetched items with their IDs and titles."""
+        if params:
+            logger.info(f"[Trakt] {source}: params={params}")
+
+        logger.info(f"[Trakt] {source}: fetched {len(items)} items")
+        for item in items:
+            year_str = f" ({item.year})" if item.year else ""
+            tmdb_str = f"tmdb:{item.tmdb_id}" if item.tmdb_id else ""
+            imdb_str = f"imdb:{item.imdb_id}" if item.imdb_id else ""
+            ids = ", ".join(filter(None, [tmdb_str, imdb_str]))
+            logger.debug(f"  - [{ids}] {item.title}{year_str}")
+
     # =========================================================================
     # Charts
     # =========================================================================
 
     async def get_trending_movies(self, limit: int = 20) -> list[Movie]:
         """Get trending movies."""
-        response = await self.get(
-            "/movies/trending",
-            params={"limit": limit, "extended": "full"},
-        )
+        params = {"limit": limit, "extended": "full"}
+        response = await self.get("/movies/trending", params=params)
         response.raise_for_status()
 
-        return [
+        movies = [
             self._parse_movie(item["movie"])
             for item in response.json()
         ]
+        self._log_items("Trending Movies", movies, params)
+        return movies
 
     async def get_trending_series(self, limit: int = 20) -> list[Series]:
         """Get trending TV series."""
-        response = await self.get(
-            "/shows/trending",
-            params={"limit": limit, "extended": "full"},
-        )
+        params = {"limit": limit, "extended": "full"}
+        response = await self.get("/shows/trending", params=params)
         response.raise_for_status()
 
-        return [
+        series = [
             self._parse_series(item["show"])
             for item in response.json()
         ]
+        self._log_items("Trending Series", series, params)
+        return series
 
     async def get_popular_movies(self, limit: int = 20) -> list[Movie]:
         """Get popular movies."""
-        response = await self.get(
-            "/movies/popular",
-            params={"limit": limit, "extended": "full"},
-        )
+        params = {"limit": limit, "extended": "full"}
+        response = await self.get("/movies/popular", params=params)
         response.raise_for_status()
 
-        return [self._parse_movie(item) for item in response.json()]
+        movies = [self._parse_movie(item) for item in response.json()]
+        self._log_items("Popular Movies", movies, params)
+        return movies
 
     async def get_popular_series(self, limit: int = 20) -> list[Series]:
         """Get popular TV series."""
-        response = await self.get(
-            "/shows/popular",
-            params={"limit": limit, "extended": "full"},
-        )
+        params = {"limit": limit, "extended": "full"}
+        response = await self.get("/shows/popular", params=params)
         response.raise_for_status()
 
-        return [self._parse_series(item) for item in response.json()]
+        series = [self._parse_series(item) for item in response.json()]
+        self._log_items("Popular Series", series, params)
+        return series
 
     async def get_watched_movies(
         self,
@@ -104,16 +124,16 @@ class TraktClient(BaseClient):
         Returns:
             List of most watched movies
         """
-        response = await self.get(
-            f"/movies/watched/{period}",
-            params={"limit": limit, "extended": "full"},
-        )
+        params = {"limit": limit, "extended": "full"}
+        response = await self.get(f"/movies/watched/{period}", params=params)
         response.raise_for_status()
 
-        return [
+        movies = [
             self._parse_movie(item["movie"])
             for item in response.json()
         ]
+        self._log_items(f"Watched Movies ({period})", movies, params)
+        return movies
 
     async def get_watched_series(
         self,
@@ -130,16 +150,16 @@ class TraktClient(BaseClient):
         Returns:
             List of most watched series
         """
-        response = await self.get(
-            f"/shows/watched/{period}",
-            params={"limit": limit, "extended": "full"},
-        )
+        params = {"limit": limit, "extended": "full"}
+        response = await self.get(f"/shows/watched/{period}", params=params)
         response.raise_for_status()
 
-        return [
+        series = [
             self._parse_series(item["show"])
             for item in response.json()
         ]
+        self._log_items(f"Watched Series ({period})", series, params)
+        return series
 
     # =========================================================================
     # Lists
