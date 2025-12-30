@@ -137,6 +137,7 @@ class Settings(BaseSettings):
     # Application settings
     log_level: str = Field(default="INFO")
     config_path: Path = Field(default=Path("/config"))
+    posters_path: Optional[Path] = Field(default=None)  # Default: config_path/posters
     database_url: str = Field(default="sqlite+aiosqlite:///data/jfc.db")
     dry_run: bool = Field(default=False)
 
@@ -150,6 +151,19 @@ class Settings(BaseSettings):
     @classmethod
     def validate_config_path(cls, v: str | Path) -> Path:
         return Path(v) if isinstance(v, str) else v
+
+    @field_validator("posters_path", mode="before")
+    @classmethod
+    def validate_posters_path(cls, v: str | Path | None) -> Path | None:
+        if v is None:
+            return None
+        return Path(v) if isinstance(v, str) else v
+
+    def get_posters_path(self) -> Path:
+        """Get effective posters path (default: config_path/posters)."""
+        if self.posters_path:
+            return self.posters_path
+        return self.config_path / "posters"
 
     @property
     def jellyfin(self) -> JellyfinSettings:

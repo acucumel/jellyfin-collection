@@ -1,10 +1,13 @@
 """Discord webhook client for notifications."""
 
 from datetime import datetime
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 import httpx
 from loguru import logger
+
+if TYPE_CHECKING:
+    from jfc.models.report import CollectionReport, RunReport
 
 
 class DiscordWebhook:
@@ -120,6 +123,8 @@ class DiscordWebhook:
         items_added: int,
         items_removed: int,
         errors: int = 0,
+        radarr_requests: int = 0,
+        sonarr_requests: int = 0,
     ) -> bool:
         """Send run end notification."""
         url = self._get_url("run_end")
@@ -144,23 +149,32 @@ class DiscordWebhook:
                     "inline": True,
                 },
                 {
-                    "name": "Collections Updated",
+                    "name": "Collections",
                     "value": str(collections_updated),
                     "inline": True,
                 },
                 {
-                    "name": "Items Added",
-                    "value": str(items_added),
-                    "inline": True,
-                },
-                {
-                    "name": "Items Removed",
-                    "value": str(items_removed),
+                    "name": "Changes",
+                    "value": f"+{items_added} / -{items_removed}",
                     "inline": True,
                 },
             ],
             "timestamp": datetime.utcnow().isoformat(),
         }
+
+        if radarr_requests > 0 or sonarr_requests > 0:
+            arr_str = []
+            if radarr_requests > 0:
+                arr_str.append(f"Radarr: {radarr_requests}")
+            if sonarr_requests > 0:
+                arr_str.append(f"Sonarr: {sonarr_requests}")
+            embed["fields"].append(
+                {
+                    "name": "Requests",
+                    "value": " | ".join(arr_str),
+                    "inline": True,
+                }
+            )
 
         if errors > 0:
             embed["fields"].append(
@@ -210,27 +224,67 @@ class DiscordWebhook:
         library: str,
         added: list[str],
         removed: list[str],
+        items_fetched: int = 0,
+        items_matched: int = 0,
+        items_missing: int = 0,
+        match_rate: float = 0.0,
+        source_provider: str = "",
+        radarr_titles: Optional[list[str]] = None,
+        sonarr_titles: Optional[list[str]] = None,
     ) -> bool:
         """Send collection changes notification."""
         url = self._get_url("changes")
         if not url:
             return False
 
-        if not added and not removed:
+        # Determine if there's any interesting info to report
+        has_changes = added or removed
+        has_arr_requests = (radarr_titles and len(radarr_titles) > 0) or (sonarr_titles and len(sonarr_titles) > 0)
+
+        if not has_changes and not has_arr_requests:
             return True  # Nothing to report
 
+        # Color based on match rate
+        if match_rate >= 90:
+            color = 3066993  # Green
+        elif match_rate >= 70:
+            color = 16776960  # Yellow
+        else:
+            color = 15105570  # Orange
+
         embed = {
-            "title": f"Collection Updated: {collection_name}",
-            "description": f"Library: {library}",
-            "color": 16776960,  # Yellow
+            "title": f"{collection_name}",
+            "description": f"**Library:** {library}\n**Source:** {source_provider}",
+            "color": color,
             "timestamp": datetime.utcnow().isoformat(),
-            "fields": [],
+            "fields": [
+                {
+                    "name": "Stats",
+                    "value": f"Fetched: {items_fetched} | Matched: {items_matched} | Missing: {items_missing}",
+                    "inline": False,
+                },
+                {
+                    "name": "Match Rate",
+                    "value": f"{match_rate:.1f}%",
+                    "inline": True,
+                },
+            ],
         }
 
+        if has_changes:
+            changes_str = f"+{len(added)} / -{len(removed)}"
+            embed["fields"].append(
+                {
+                    "name": "Collection Changes",
+                    "value": changes_str,
+                    "inline": True,
+                }
+            )
+
         if added:
-            added_str = "\n".join(f"+ {item}" for item in added[:10])
-            if len(added) > 10:
-                added_str += f"\n... and {len(added) - 10} more"
+            added_str = "\n".join(f"+ {item}" for item in added[:8])
+            if len(added) > 8:
+                added_str += f"\n*... and {len(added) - 8} more*"
             embed["fields"].append(
                 {
                     "name": f"Added ({len(added)})",
@@ -240,13 +294,37 @@ class DiscordWebhook:
             )
 
         if removed:
-            removed_str = "\n".join(f"- {item}" for item in removed[:10])
-            if len(removed) > 10:
-                removed_str += f"\n... and {len(removed) - 10} more"
+            removed_str = "\n".join(f"- {item}" for item in removed[:8])
+            if len(removed) > 8:
+                removed_str += f"\n*... and {len(removed) - 8} more*"
             embed["fields"].append(
                 {
                     "name": f"Removed ({len(removed)})",
                     "value": removed_str or "None",
+                    "inline": False,
+                }
+            )
+
+        if radarr_titles:
+            radarr_str = "\n".join(f"• {item}" for item in radarr_titles[:5])
+            if len(radarr_titles) > 5:
+                radarr_str += f"\n*... and {len(radarr_titles) - 5} more*"
+            embed["fields"].append(
+                {
+                    "name": f"Sent to Radarr ({len(radarr_titles)})",
+                    "value": radarr_str,
+                    "inline": False,
+                }
+            )
+
+        if sonarr_titles:
+            sonarr_str = "\n".join(f"• {item}" for item in sonarr_titles[:5])
+            if len(sonarr_titles) > 5:
+                sonarr_str += f"\n*... and {len(sonarr_titles) - 5} more*"
+            embed["fields"].append(
+                {
+                    "name": f"Sent to Sonarr ({len(sonarr_titles)})",
+                    "value": sonarr_str,
                     "inline": False,
                 }
             )

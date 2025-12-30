@@ -23,6 +23,22 @@ class ScheduleType(str, Enum):
     NEVER = "never"
 
 
+class CollectionOrder(str, Enum):
+    """Sort order for items within a collection.
+
+    Note: Jellyfin displays items in the order they were added.
+    To achieve custom ordering, items are cleared and re-added in sorted order.
+    """
+
+    CUSTOM = "custom"  # Keep source order (default)
+    SORT_NAME = "SortName"  # Alphabetical by title
+    PREMIERE_DATE = "PremiereDate"  # By release date (newest first)
+    DATE_CREATED = "DateCreated"  # By date added to Jellyfin
+    COMMUNITY_RATING = "CommunityRating"  # By rating (highest first)
+    CRITIC_RATING = "CriticRating"  # By critic rating (highest first)
+    RANDOM = "Random"  # Random order
+
+
 class CollectionSchedule(BaseModel):
     """Collection schedule configuration."""
 
@@ -122,6 +138,13 @@ class CollectionItem(BaseModel):
     matched: bool = False
     in_library: bool = False
 
+    # Metadata for sorting (populated from source/Jellyfin)
+    premiere_date: Optional[date] = None
+    date_created: Optional[date] = None
+    community_rating: Optional[float] = None
+    critic_rating: Optional[float] = None
+    sort_name: Optional[str] = None
+
 
 class CollectionConfig(BaseModel):
     """Configuration for a single collection (from Kometa YAML)."""
@@ -130,10 +153,16 @@ class CollectionConfig(BaseModel):
     summary: Optional[str] = None
     sort_title: Optional[str] = None
 
+    # Poster image (filename relative to posters_path)
+    poster: Optional[str] = None
+
     # Display options
     visible_library: bool = True
     visible_home: bool = False
     visible_shared: bool = False
+
+    # Collection item ordering
+    collection_order: CollectionOrder = CollectionOrder.CUSTOM
 
     # Sync options
     sync_mode: SyncMode = SyncMode.SYNC

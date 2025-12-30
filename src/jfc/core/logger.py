@@ -44,8 +44,16 @@ def setup_logging(
     if log_dir:
         log_dir.mkdir(parents=True, exist_ok=True)
 
-        # Main log file with rotation
-        file_format = (
+        # Main log file with rotation (with ANSI colors for terminal viewing)
+        colored_file_format = (
+            "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | "
+            "<level>{level: <8}</level> | "
+            "<cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> | "
+            "<level>{message}</level>"
+        )
+
+        # Plain format for JSON logs
+        plain_file_format = (
             "{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | "
             "{name}:{function}:{line} | {message}"
         )
@@ -53,7 +61,7 @@ def setup_logging(
         if json_logs:
             logger.add(
                 log_dir / "jfc.log",
-                format=file_format,
+                format=plain_file_format,
                 level=level,
                 rotation="10 MB",
                 retention="7 days",
@@ -63,17 +71,18 @@ def setup_logging(
         else:
             logger.add(
                 log_dir / "jfc.log",
-                format=file_format,
+                format=colored_file_format,
                 level=level,
                 rotation="10 MB",
                 retention="7 days",
                 compression="gz",
+                colorize=True,
             )
 
-        # Separate error log
+        # Separate error log (plain format for easier parsing)
         logger.add(
             log_dir / "error.log",
-            format=file_format,
+            format=plain_file_format,
             level="ERROR",
             rotation="10 MB",
             retention="30 days",

@@ -20,6 +20,33 @@ class MediaMatcher:
         """
         self.jellyfin = jellyfin
         self._cache: dict[int, Optional[LibraryItem]] = {}  # tmdb_id -> LibraryItem
+        self._library_loaded: dict[str, bool] = {}  # library_id -> loaded
+        self._library_items: dict[str, dict[int, LibraryItem]] = {}  # library_id -> {tmdb_id -> item}
+
+    async def _ensure_library_loaded(self, library_id: str, media_type: Optional[MediaType] = None) -> None:
+        """Load all items from a library into cache."""
+        if library_id in self._library_loaded:
+            return
+
+        logger.info(f"[Jellyfin] Loading library {library_id} into cache...")
+
+        items = await self.jellyfin.get_library_items(
+            library_id=library_id,
+            media_type=media_type,
+            limit=10000,
+        )
+
+        # Index by TMDb ID
+        self._library_items[library_id] = {}
+        for item in items:
+            if item.tmdb_id:
+                self._library_items[library_id][item.tmdb_id] = item
+
+        self._library_loaded[library_id] = True
+        logger.info(
+            f"[Jellyfin] Loaded {len(items)} items from library, "
+            f"{len(self._library_items[library_id])} with TMDb IDs"
+        )
 
     async def find_in_library(
         self,
@@ -36,35 +63,54 @@ class MediaMatcher:
         Returns:
             LibraryItem if found, None otherwise
         """
-        # Check cache first
+        year_str = f" ({item.year})" if item.year else ""
+        tmdb_str = f"tmdb:{item.tmdb_id}" if item.tmdb_id else "no-tmdb"
+
+        # Ensure library is loaded into cache
+        if library_id:
+            await self._ensure_library_loaded(library_id, item.media_type)
+
+        # Check global cache first (for cross-library lookups)
         if item.tmdb_id and item.tmdb_id in self._cache:
-            return self._cache[item.tmdb_id]
+            cached = self._cache[item.tmdb_id]
+            if cached:
+                logger.debug(f"[Jellyfin] Cache hit: [{tmdb_str}] {item.title}{year_str} -> {cached.title}")
+            return cached
 
-        # Try to find by TMDb ID (most reliable)
-        if item.tmdb_id:
-            result = await self.jellyfin.find_by_tmdb_id(item.tmdb_id, item.media_type)
-            if result:
-                self._cache[item.tmdb_id] = result
-                return result
-
-        # Fall back to search by title and year
-        results = await self.jellyfin.search_items(
-            query=item.title,
-            media_type=item.media_type,
-            limit=5,
-        )
-
-        # Find best match
-        for lib_item in results:
-            if self._is_match(item, lib_item):
-                if item.tmdb_id:
-                    self._cache[item.tmdb_id] = lib_item
+        # Try to find by TMDb ID in library cache (most reliable and fast)
+        if item.tmdb_id and library_id and library_id in self._library_items:
+            lib_item = self._library_items[library_id].get(item.tmdb_id)
+            if lib_item:
+                self._cache[item.tmdb_id] = lib_item
+                logger.debug(
+                    f"[Jellyfin] FOUND: [{tmdb_str}] {item.title}{year_str} "
+                    f"-> {lib_item.title} ({lib_item.year})"
+                )
                 return lib_item
+
+        # Fall back to search by title and year (for items without TMDb ID)
+        if not item.tmdb_id:
+            logger.debug(f"[Jellyfin] Searching by title (no TMDb ID): '{item.title}'{year_str}")
+            results = await self.jellyfin.search_items(
+                query=item.title,
+                media_type=item.media_type,
+                limit=5,
+            )
+
+            # Find best match
+            for lib_item in results:
+                if self._is_match(item, lib_item):
+                    logger.debug(
+                        f"[Jellyfin] FOUND by title: {item.title}{year_str} "
+                        f"-> {lib_item.title} ({lib_item.year})"
+                    )
+                    return lib_item
 
         # Not found
         if item.tmdb_id:
             self._cache[item.tmdb_id] = None
 
+        logger.debug(f"[Jellyfin] NOT FOUND: [{tmdb_str}] {item.title}{year_str}")
         return None
 
     async def batch_find(

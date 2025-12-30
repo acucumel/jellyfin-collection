@@ -3,6 +3,8 @@
 from datetime import date
 from typing import Any, Optional
 
+from loguru import logger
+
 from jfc.clients.base import BaseClient
 from jfc.models.media import MediaItem, MediaType, Movie, Series
 
@@ -35,6 +37,23 @@ class TMDbClient(BaseClient):
         params.update(kwargs)
         return params
 
+    def _log_items(
+        self,
+        source: str,
+        items: list[MediaItem],
+        params: Optional[dict[str, Any]] = None,
+    ) -> None:
+        """Log fetched items with their IDs and titles."""
+        # Log the API call parameters (excluding api_key for security)
+        if params:
+            filtered_params = {k: v for k, v in params.items() if k != "api_key"}
+            logger.info(f"[TMDb] {source}: params={filtered_params}")
+
+        logger.info(f"[TMDb] {source}: fetched {len(items)} items")
+        for item in items:
+            year_str = f" ({item.year})" if item.year else ""
+            logger.debug(f"  - [tmdb:{item.tmdb_id}] {item.title}{year_str}")
+
     # =========================================================================
     # Trending
     # =========================================================================
@@ -54,9 +73,10 @@ class TMDbClient(BaseClient):
         Returns:
             List of trending movies
         """
+        params = self._params()
         response = await self.get(
             f"/trending/movie/{time_window}",
-            params=self._params(),
+            params=params,
         )
         response.raise_for_status()
 
@@ -64,6 +84,7 @@ class TMDbClient(BaseClient):
         for item in response.json().get("results", [])[:limit]:
             movies.append(self._parse_movie(item))
 
+        self._log_items(f"Trending Movies ({time_window})", movies, params)
         return movies
 
     async def get_trending_series(
@@ -81,9 +102,10 @@ class TMDbClient(BaseClient):
         Returns:
             List of trending series
         """
+        params = self._params()
         response = await self.get(
             f"/trending/tv/{time_window}",
-            params=self._params(),
+            params=params,
         )
         response.raise_for_status()
 
@@ -91,6 +113,7 @@ class TMDbClient(BaseClient):
         for item in response.json().get("results", [])[:limit]:
             series.append(self._parse_series(item))
 
+        self._log_items(f"Trending Series ({time_window})", series, params)
         return series
 
     # =========================================================================
@@ -99,23 +122,29 @@ class TMDbClient(BaseClient):
 
     async def get_popular_movies(self, limit: int = 20) -> list[Movie]:
         """Get popular movies."""
-        response = await self.get("/movie/popular", params=self._params())
+        params = self._params()
+        response = await self.get("/movie/popular", params=params)
         response.raise_for_status()
 
-        return [
+        movies = [
             self._parse_movie(item)
             for item in response.json().get("results", [])[:limit]
         ]
+        self._log_items("Popular Movies", movies, params)
+        return movies
 
     async def get_popular_series(self, limit: int = 20) -> list[Series]:
         """Get popular TV series."""
-        response = await self.get("/tv/popular", params=self._params())
+        params = self._params()
+        response = await self.get("/tv/popular", params=params)
         response.raise_for_status()
 
-        return [
+        series = [
             self._parse_series(item)
             for item in response.json().get("results", [])[:limit]
         ]
+        self._log_items("Popular Series", series, params)
+        return series
 
     # =========================================================================
     # Discover
@@ -196,10 +225,12 @@ class TMDbClient(BaseClient):
         response = await self.get("/discover/movie", params=params)
         response.raise_for_status()
 
-        return [
+        movies = [
             self._parse_movie(item)
             for item in response.json().get("results", [])[:limit]
         ]
+        self._log_items("Discover Movies", movies, params)
+        return movies
 
     async def discover_series(
         self,
@@ -262,10 +293,12 @@ class TMDbClient(BaseClient):
         response = await self.get("/discover/tv", params=params)
         response.raise_for_status()
 
-        return [
+        series = [
             self._parse_series(item)
             for item in response.json().get("results", [])[:limit]
         ]
+        self._log_items("Discover Series", series, params)
+        return series
 
     # =========================================================================
     # Airing / Now Playing

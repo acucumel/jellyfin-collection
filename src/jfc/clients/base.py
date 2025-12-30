@@ -131,6 +131,52 @@ class BaseClient:
         """Make DELETE request."""
         return await self._request("DELETE", endpoint, **kwargs)
 
+    async def post_binary(
+        self,
+        endpoint: str,
+        content: bytes,
+        content_type: str,
+        params: Optional[dict[str, Any]] = None,
+    ) -> httpx.Response:
+        """
+        Make POST request with binary content.
+
+        Uses a separate client without JSON content-type headers.
+
+        Args:
+            endpoint: API endpoint
+            content: Binary content to send
+            content_type: MIME type of the content
+            params: Query parameters
+
+        Returns:
+            HTTP response
+        """
+        logger.debug(f"[{self.__class__.__name__}] POST {endpoint} (binary)")
+
+        # Use a fresh client for binary uploads to avoid header conflicts
+        async with httpx.AsyncClient(
+            base_url=self.base_url,
+            timeout=self.timeout,
+        ) as client:
+            response = await client.post(
+                endpoint,
+                content=content,
+                params=params,
+                headers={
+                    "Content-Type": content_type,
+                    **self._headers,  # Include auth headers like X-Emby-Token
+                },
+            )
+
+        if response.status_code >= 400:
+            logger.error(
+                f"[{self.__class__.__name__}] POST {endpoint} (binary) "
+                f"failed with {response.status_code}: {response.text}"
+            )
+
+        return response
+
     async def __aenter__(self) -> "BaseClient":
         """Context manager entry."""
         return self
