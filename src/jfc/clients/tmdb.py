@@ -222,15 +222,31 @@ class TMDbClient(BaseClient):
         if region:
             params["region"] = region
 
-        response = await self.get("/discover/movie", params=params)
-        response.raise_for_status()
+        # Fetch with pagination if limit > 20
+        all_results: list[Movie] = []
+        page = 1
 
-        movies = [
-            self._parse_movie(item)
-            for item in response.json().get("results", [])[:limit]
-        ]
-        self._log_items("Discover Movies", movies, params)
-        return movies
+        while len(all_results) < limit:
+            params["page"] = page
+            response = await self.get("/discover/movie", params=params)
+            response.raise_for_status()
+
+            data = response.json()
+            results = data.get("results", [])
+            total_pages = data.get("total_pages", 1)
+
+            for item in results:
+                if len(all_results) >= limit:
+                    break
+                all_results.append(self._parse_movie(item))
+
+            # Stop if no more pages or we've fetched enough
+            if page >= total_pages or not results:
+                break
+            page += 1
+
+        self._log_items("Discover Movies", all_results, params)
+        return all_results
 
     async def discover_series(
         self,
@@ -245,6 +261,8 @@ class TMDbClient(BaseClient):
         with_watch_providers: Optional[list[int]] = None,
         watch_region: Optional[str] = None,
         with_status: Optional[int] = None,
+        with_original_language: Optional[str] = None,
+        with_origin_country: Optional[str] = None,
         limit: int = 20,
     ) -> list[Series]:
         """
@@ -262,6 +280,8 @@ class TMDbClient(BaseClient):
             with_watch_providers: Watch provider IDs
             watch_region: Region for watch providers
             with_status: Status filter (0=Returning, 3=Ended, etc.)
+            with_original_language: Filter by original language (ISO 639-1)
+            with_origin_country: Filter by origin country (ISO 3166-1)
             limit: Maximum results
 
         Returns:
@@ -289,16 +309,37 @@ class TMDbClient(BaseClient):
             params["with_watch_monetization_types"] = "flatrate"
         if with_status is not None:
             params["with_status"] = with_status
+        if with_original_language:
+            params["with_original_language"] = with_original_language
+        if with_origin_country:
+            params["with_origin_country"] = with_origin_country
 
-        response = await self.get("/discover/tv", params=params)
-        response.raise_for_status()
+        # Fetch with pagination if limit > 20
+        all_results: list[Series] = []
+        page = 1
+        per_page = 20  # TMDb returns 20 results per page
 
-        series = [
-            self._parse_series(item)
-            for item in response.json().get("results", [])[:limit]
-        ]
-        self._log_items("Discover Series", series, params)
-        return series
+        while len(all_results) < limit:
+            params["page"] = page
+            response = await self.get("/discover/tv", params=params)
+            response.raise_for_status()
+
+            data = response.json()
+            results = data.get("results", [])
+            total_pages = data.get("total_pages", 1)
+
+            for item in results:
+                if len(all_results) >= limit:
+                    break
+                all_results.append(self._parse_series(item))
+
+            # Stop if no more pages or we've fetched enough
+            if page >= total_pages or not results:
+                break
+            page += 1
+
+        self._log_items("Discover Series", all_results, params)
+        return all_results
 
     # =========================================================================
     # Airing / Now Playing

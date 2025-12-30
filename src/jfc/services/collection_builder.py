@@ -13,7 +13,13 @@ from jfc.clients.sonarr import SonarrClient
 from jfc.clients.tmdb import TMDbClient
 from jfc.clients.trakt import TraktClient
 from jfc.core.config import get_settings
-from jfc.models.collection import Collection, CollectionConfig, CollectionItem, CollectionOrder
+from jfc.models.collection import (
+    Collection,
+    CollectionConfig,
+    CollectionFilter,
+    CollectionItem,
+    CollectionOrder,
+)
 from jfc.models.media import MediaItem, MediaType, Movie, Series
 from jfc.models.report import CollectionReport
 from jfc.services.media_matcher import MediaMatcher
@@ -309,7 +315,9 @@ class CollectionBuilder:
 
         # TMDb Discover
         if config.tmdb_discover:
-            discover_items = await self._fetch_tmdb_discover(config.tmdb_discover, media_type)
+            discover_items = await self._fetch_tmdb_discover(
+                config.tmdb_discover, media_type, config.filters
+            )
             items.extend(discover_items)
 
         # Trakt
@@ -353,42 +361,87 @@ class CollectionBuilder:
         self,
         discover: dict[str, Any],
         media_type: MediaType,
+        filters: Optional[CollectionFilter] = None,
     ) -> list[MediaItem]:
-        """Fetch items from TMDb discover endpoint."""
-        limit = discover.get("limit", 20)
+        """Fetch items from TMDb discover endpoint with optimized filters."""
+        base_limit = discover.get("limit", 20)
+
+        # Calculate dynamic limit multiplier based on exclusion filters
+        # Since TMDb doesn't support excluding languages/countries, we fetch more
+        # items to compensate for post-filtering losses
+        limit_multiplier = 1.0
+        if filters:
+            if filters.original_language_not:
+                # Each excluded language might filter ~20-50% of results
+                limit_multiplier += 0.5 * len(filters.original_language_not)
+            if filters.origin_country_not:
+                # Each excluded country might filter ~20-50% of results
+                limit_multiplier += 0.5 * len(filters.origin_country_not)
+
+        # Cap the multiplier at 4x to avoid excessive API calls
+        limit_multiplier = min(limit_multiplier, 4.0)
+        adjusted_limit = int(base_limit * limit_multiplier)
+
+        if limit_multiplier > 1.0:
+            logger.debug(
+                f"Adjusted limit from {base_limit} to {adjusted_limit} "
+                f"(multiplier: {limit_multiplier:.1f}x) to compensate for exclusion filters"
+            )
+
+        # Merge filters into discover parameters
+        # Priority: discover params > filter params (discover is more specific)
+        vote_avg_gte = discover.get("vote_average.gte")
+        if vote_avg_gte is None and filters and filters.vote_average_gte:
+            vote_avg_gte = filters.vote_average_gte
+
+        vote_count_gte = discover.get("vote_count.gte")
+        if vote_count_gte is None and filters and filters.tmdb_vote_count_gte:
+            vote_count_gte = filters.tmdb_vote_count_gte
 
         if media_type == MediaType.MOVIE:
+            # Convert year filter to date filter if not already set
+            release_date_gte = discover.get("primary_release_date.gte")
+            if release_date_gte is None and filters and filters.year_gte:
+                release_date_gte = date(filters.year_gte, 1, 1)
+
             return await self.tmdb.discover_movies(
                 sort_by=discover.get("sort_by", "popularity.desc"),
                 with_genres=discover.get("with_genres"),
                 without_genres=discover.get("without_genres"),
-                vote_average_gte=discover.get("vote_average.gte"),
+                vote_average_gte=vote_avg_gte,
                 vote_average_lte=discover.get("vote_average.lte"),
-                vote_count_gte=discover.get("vote_count.gte"),
+                vote_count_gte=vote_count_gte,
                 vote_count_lte=discover.get("vote_count.lte"),
-                primary_release_date_gte=discover.get("primary_release_date.gte"),
+                primary_release_date_gte=release_date_gte,
                 primary_release_date_lte=discover.get("primary_release_date.lte"),
                 with_watch_providers=discover.get("with_watch_providers"),
                 watch_region=discover.get("watch_region"),
                 with_original_language=discover.get("with_original_language"),
                 with_release_type=discover.get("with_release_type"),
                 region=discover.get("region"),
-                limit=limit,
+                limit=adjusted_limit,
             )
         else:
+            # Convert year filter to date filter if not already set
+            first_air_date_gte = discover.get("first_air_date.gte")
+            if first_air_date_gte is None and filters and filters.year_gte:
+                first_air_date_gte = date(filters.year_gte, 1, 1)
+
             return await self.tmdb.discover_series(
                 sort_by=discover.get("sort_by", "popularity.desc"),
                 with_genres=discover.get("with_genres"),
                 without_genres=discover.get("without_genres"),
-                vote_average_gte=discover.get("vote_average.gte"),
-                vote_count_gte=discover.get("vote_count.gte"),
+                vote_average_gte=vote_avg_gte,
+                vote_count_gte=vote_count_gte,
                 vote_count_lte=discover.get("vote_count.lte"),
-                first_air_date_gte=discover.get("first_air_date.gte"),
+                first_air_date_gte=first_air_date_gte,
                 first_air_date_lte=discover.get("first_air_date.lte"),
                 with_watch_providers=discover.get("with_watch_providers"),
                 watch_region=discover.get("watch_region"),
                 with_status=discover.get("with_status"),
-                limit=limit,
+                with_original_language=discover.get("with_original_language"),
+                with_origin_country=discover.get("with_origin_country"),
+                limit=adjusted_limit,
             )
 
     async def _fetch_trakt_chart(
