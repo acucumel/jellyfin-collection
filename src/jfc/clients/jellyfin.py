@@ -243,9 +243,11 @@ class JellyfinClient(BaseClient):
     async def get_collection(self, collection_id: str) -> Optional[dict[str, Any]]:
         """Get collection details."""
         # Use /Items endpoint with Ids filter (more reliable than /Items/{id})
+        # IMPORTANT: Must include many fields for POST /Items/{id} to work
+        # See: https://github.com/jellyfin/jellyfin/issues/12646
         params = {
             "Ids": collection_id,
-            "Fields": "Overview,SortName,DisplayOrder",
+            "Fields": "Overview,SortName,ForcedSortName,DisplayOrder,Tags,Genres,People,Studios,ProviderIds,DateCreated,Taglines",
         }
         response = await self.get("/Items", params=params)
         if response.status_code == 200:
@@ -411,7 +413,8 @@ class JellyfinClient(BaseClient):
         if overview:
             collection["Overview"] = overview
         if sort_name:
-            collection["SortName"] = sort_name
+            # Use ForcedSortName to override Jellyfin's auto-generated SortName
+            collection["ForcedSortName"] = sort_name
         if display_order:
             collection["DisplayOrder"] = display_order
 

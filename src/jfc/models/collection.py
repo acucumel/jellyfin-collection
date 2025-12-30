@@ -134,6 +134,9 @@ class CollectionItem(BaseModel):
     tvdb_id: Optional[int] = None
     jellyfin_id: Optional[str] = None
 
+    # Media type (movie or series)
+    media_type: Optional[str] = None  # "movie" or "series"
+
     # Match status
     matched: bool = False
     in_library: bool = False
@@ -196,6 +199,16 @@ class CollectionConfig(BaseModel):
     # Radarr/Sonarr tags
     item_radarr_tag: Optional[str] = None
     item_sonarr_tag: Optional[str] = None
+
+    # Library-level Sonarr overrides (from config.yml library section)
+    sonarr_root_folder: Optional[str] = None
+    sonarr_tag: Optional[str] = None
+    sonarr_quality_profile: Optional[str] = None
+
+    # Library-level Radarr overrides (from config.yml library section)
+    radarr_root_folder: Optional[str] = None
+    radarr_tag: Optional[str] = None
+    radarr_quality_profile: Optional[str] = None
 
     # Limit
     limit: Optional[int] = None

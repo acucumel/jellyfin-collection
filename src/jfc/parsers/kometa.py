@@ -365,6 +365,27 @@ class KometaParser:
                 full_path = self.config_path / cf_path
                 collections.extend(self.parse_collection_file(full_path))
 
+            # Apply library-level Sonarr/Radarr settings to each collection
+            sonarr_config = parsed.get("sonarr") or {}
+            radarr_config = parsed.get("radarr") or {}
+
+            for collection in collections:
+                # Sonarr overrides
+                if sonarr_config.get("root_folder_path"):
+                    collection.sonarr_root_folder = sonarr_config["root_folder_path"]
+                if sonarr_config.get("tag"):
+                    collection.sonarr_tag = sonarr_config["tag"]
+                if sonarr_config.get("quality_profile"):
+                    collection.sonarr_quality_profile = sonarr_config["quality_profile"]
+
+                # Radarr overrides
+                if radarr_config.get("root_folder_path"):
+                    collection.radarr_root_folder = radarr_config["root_folder_path"]
+                if radarr_config.get("tag"):
+                    collection.radarr_tag = radarr_config["tag"]
+                if radarr_config.get("quality_profile"):
+                    collection.radarr_quality_profile = radarr_config["quality_profile"]
+
             result[library_name] = collections
             logger.info(f"Library '{library_name}': {len(collections)} collections")
 

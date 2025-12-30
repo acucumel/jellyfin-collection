@@ -102,6 +102,7 @@ class CollectionBuilder:
                 imdb_id=item.imdb_id,
                 tvdb_id=item.tvdb_id,
                 jellyfin_id=lib_item.jellyfin_id if lib_item else None,
+                media_type=item.media_type.value,  # "movie" or "series"
                 matched=lib_item is not None,
                 in_library=lib_item is not None,
             )
@@ -605,6 +606,9 @@ class CollectionBuilder:
     ) -> tuple[int, int]:
         """Add missing items to Radarr/Sonarr.
 
+        Uses library-level settings from collection config if available,
+        otherwise falls back to client defaults.
+
         Returns:
             Tuple of (radarr_count, sonarr_count)
         """
@@ -615,27 +619,53 @@ class CollectionBuilder:
         if not missing:
             return (0, 0)
 
-        # Determine media type from first item
-        is_series = collection.items[0].tvdb_id is not None if collection.items else False
+        # Get library-level settings (item-level tag takes priority over library-level)
+        config = collection.config
 
         for item in missing:
-            tag = collection.config.item_radarr_tag or collection.config.item_sonarr_tag
+            # Use media_type to determine Sonarr vs Radarr
+            is_series = item.media_type == "series"
 
-            if is_series and self.sonarr and item.tvdb_id:
+            if is_series and self.sonarr:
+                # Sonarr settings: item_sonarr_tag > sonarr_tag > client default
+                tag = config.item_sonarr_tag or config.sonarr_tag
+                tags = [tag] if tag else None
+
+                # Get tvdb_id - fetch from TMDb if not already available
+                tvdb_id = item.tvdb_id
+                if not tvdb_id and item.tmdb_id:
+                    # Fetch series details from TMDb to get tvdb_id
+                    series_details = await self.tmdb.get_series_details(item.tmdb_id)
+                    if series_details:
+                        tvdb_id = series_details.tvdb_id
+
+                if not tvdb_id:
+                    logger.warning(f"Cannot add '{item.title}' to Sonarr: no TVDB ID found")
+                    continue
+
                 try:
                     await self.sonarr.add_series(
-                        tvdb_id=item.tvdb_id,
-                        tags=[tag] if tag else None,
+                        tvdb_id=tvdb_id,
+                        root_folder=config.sonarr_root_folder,
+                        quality_profile=config.sonarr_quality_profile,
+                        tags=tags,
                     )
                     sonarr_count += 1
                     report.sonarr_titles.append(item.title)
                 except Exception as e:
                     logger.warning(f"Failed to add '{item.title}' to Sonarr: {e}")
+
             elif not is_series and self.radarr and item.tmdb_id:
+                # Radarr settings: item_radarr_tag > radarr_tag > client default
+                tag = config.item_radarr_tag or config.radarr_tag
+                tags = [tag] if tag else None
+
                 try:
                     await self.radarr.add_movie(
                         tmdb_id=item.tmdb_id,
-                        tags=[tag] if tag else None,
+                        root_folder=config.radarr_root_folder,
+                        quality_profile=config.radarr_quality_profile,
+                        tags=tags,
                     )
                     radarr_count += 1
                     report.radarr_titles.append(item.title)
