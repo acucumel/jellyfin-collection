@@ -436,8 +436,10 @@ class CollectionBuilder:
         for item in items:
             # Year filters
             if filters.year_gte and item.year and item.year < filters.year_gte:
+                logger.debug(f"Filtered out '{item.title}': year={item.year} < {filters.year_gte}")
                 continue
             if filters.year_lte and item.year and item.year > filters.year_lte:
+                logger.debug(f"Filtered out '{item.title}': year={item.year} > {filters.year_lte}")
                 continue
 
             # Rating filters
@@ -456,9 +458,11 @@ class CollectionBuilder:
             # Country filters
             if filters.country_not and item.original_country:
                 if item.original_country in filters.country_not:
+                    logger.debug(f"Filtered out '{item.title}': country={item.original_country}")
                     continue
             if filters.origin_country_not and item.original_country:
                 if item.original_country in filters.origin_country_not:
+                    logger.debug(f"Filtered out '{item.title}': origin_country={item.original_country}")
                     continue
 
             # Language filter (e.g., exclude Japanese anime)
