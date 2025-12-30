@@ -1,0 +1,66 @@
+version: "3.8"
+
+services:
+  jellyfin-collection:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: jellyfin-collection
+    restart: unless-stopped
+    environment:
+      # Jellyfin
+      - JELLYFIN_URL=${JELLYFIN_URL}
+      - JELLYFIN_API_KEY=${JELLYFIN_API_KEY}
+      # TMDb
+      - TMDB_API_KEY=${TMDB_API_KEY}
+      - TMDB_LANGUAGE=${TMDB_LANGUAGE:-fr}
+      - TMDB_REGION=${TMDB_REGION:-FR}
+      # Trakt
+      - TRAKT_CLIENT_ID=${TRAKT_CLIENT_ID}
+      - TRAKT_CLIENT_SECRET=${TRAKT_CLIENT_SECRET}
+      - TRAKT_ACCESS_TOKEN=${TRAKT_ACCESS_TOKEN:-}
+      - TRAKT_REFRESH_TOKEN=${TRAKT_REFRESH_TOKEN:-}
+      # MDBList
+      - MDBLIST_API_KEY=${MDBLIST_API_KEY:-}
+      # Radarr
+      - RADARR_URL=${RADARR_URL}
+      - RADARR_API_KEY=${RADARR_API_KEY}
+      - RADARR_ROOT_FOLDER=${RADARR_ROOT_FOLDER:-/movies}
+      - RADARR_QUALITY_PROFILE=${RADARR_QUALITY_PROFILE:-HD-1080p}
+      - RADARR_DEFAULT_TAG=${RADARR_DEFAULT_TAG:-jfc}
+      # Sonarr
+      - SONARR_URL=${SONARR_URL}
+      - SONARR_API_KEY=${SONARR_API_KEY}
+      - SONARR_ROOT_FOLDER=${SONARR_ROOT_FOLDER:-/tv}
+      - SONARR_QUALITY_PROFILE=${SONARR_QUALITY_PROFILE:-HD-1080p}
+      - SONARR_DEFAULT_TAG=${SONARR_DEFAULT_TAG:-jfc}
+      # Discord
+      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
+      - DISCORD_WEBHOOK_ERROR=${DISCORD_WEBHOOK_ERROR:-}
+      - DISCORD_WEBHOOK_RUN_START=${DISCORD_WEBHOOK_RUN_START:-}
+      - DISCORD_WEBHOOK_RUN_END=${DISCORD_WEBHOOK_RUN_END:-}
+      - DISCORD_WEBHOOK_CHANGES=${DISCORD_WEBHOOK_CHANGES:-}
+      # Scheduler
+      - SCHEDULER_CRON=${SCHEDULER_CRON:-0 3 * * *}
+      - SCHEDULER_TIMEZONE=${SCHEDULER_TIMEZONE:-Europe/Paris}
+      # Application
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CONFIG_PATH=/config
+      - DATABASE_URL=sqlite+aiosqlite:///data/jfc.db
+      - DRY_RUN=${DRY_RUN:-false}
+    volumes:
+      - ./config:/config:ro          # Configurations Kometa (YAML)
+      - jfc-data:/data               # Base de données SQLite
+      - jfc-logs:/logs               # Logs applicatifs
+    ports:
+      - "8080:8080"                   # API Web (optionnel)
+    networks:
+      - media-stack
+
+volumes:
+  jfc-data:
+  jfc-logs:
+
+networks:
+  media-stack:
+    external: true
