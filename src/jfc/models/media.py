@@ -33,7 +33,7 @@ class MediaItem(BaseModel):
 
     # Metadata
     overview: Optional[str] = None
-    genres: list[str] = Field(default_factory=list)
+    genres: list[str | int] = Field(default_factory=list)  # Can be genre names or IDs
     original_language: Optional[str] = None
     original_country: Optional[str] = None
     vote_average: Optional[float] = None

@@ -226,6 +226,33 @@ class KometaParser:
         if "origin_country.not" in filters:
             result.origin_country_not = filters["origin_country.not"]
 
+        # Language filter (e.g., exclude Japanese: ["ja"])
+        if "original_language.not" in filters:
+            lang = filters["original_language.not"]
+            if isinstance(lang, str):
+                result.original_language_not = [lang]
+            else:
+                result.original_language_not = lang
+
+        # Genre filters (for post-filtering, TMDb discover handles these separately)
+        if "without_genres" in filters:
+            genres = filters["without_genres"]
+            if isinstance(genres, int):
+                result.without_genres = [genres]
+            elif isinstance(genres, str):
+                result.without_genres = [int(g) for g in genres.split(",")]
+            else:
+                result.without_genres = genres
+
+        if "with_genres" in filters:
+            genres = filters["with_genres"]
+            if isinstance(genres, int):
+                result.with_genres = [genres]
+            elif isinstance(genres, str):
+                result.with_genres = [int(g) for g in genres.split(",")]
+            else:
+                result.with_genres = genres
+
         return result
 
     def _parse_collection_order(self, value: str | None) -> CollectionOrder:

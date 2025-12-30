@@ -95,6 +95,9 @@ class CollectionFilter(BaseModel):
     country_not: list[str] = Field(default_factory=list)
     origin_country_not: list[str] = Field(default_factory=list)
 
+    # Language filter
+    original_language_not: list[str] = Field(default_factory=list)  # e.g., ["ja"] to exclude Japanese
+
     # Date filters
     release_date_gte: Optional[date] = None
     release_date_lte: Optional[date] = None
