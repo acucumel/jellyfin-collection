@@ -411,12 +411,15 @@ class TMDbClient(BaseClient):
             except ValueError:
                 pass
 
+        # Get genre IDs (available in discover/list endpoints)
+        genre_ids = data.get("genre_ids", [])
+
         return Movie(
             title=data.get("title", "Unknown"),
             year=year,
             tmdb_id=data.get("id"),
             overview=data.get("overview"),
-            genres=[],  # Full list requires details endpoint
+            genres=genre_ids,  # Store genre IDs for filtering
             original_language=data.get("original_language"),
             vote_average=data.get("vote_average"),
             vote_count=data.get("vote_count"),
@@ -459,12 +462,15 @@ class TMDbClient(BaseClient):
             except ValueError:
                 pass
 
+        # Get genre IDs (available in discover/list endpoints)
+        genre_ids = data.get("genre_ids", [])
+
         return Series(
             title=data.get("name", "Unknown"),
             year=year,
             tmdb_id=data.get("id"),
             overview=data.get("overview"),
-            genres=[],
+            genres=genre_ids,  # Store genre IDs for filtering
             original_language=data.get("original_language"),
             original_country=data.get("origin_country", [None])[0],
             vote_average=data.get("vote_average"),

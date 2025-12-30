@@ -461,6 +461,32 @@ class CollectionBuilder:
                 if item.original_country in filters.origin_country_not:
                     continue
 
+            # Language filter (e.g., exclude Japanese anime)
+            if filters.original_language_not and item.original_language:
+                if item.original_language in filters.original_language_not:
+                    logger.debug(f"Filtered out '{item.title}': language={item.original_language}")
+                    continue
+
+            # Genre filters (genres stored as list of IDs)
+            if filters.without_genres and item.genres:
+                # item.genres can be list of ints or list of strings
+                item_genre_ids = [
+                    g if isinstance(g, int) else int(g) if str(g).isdigit() else 0
+                    for g in item.genres
+                ]
+                if any(g in item_genre_ids for g in filters.without_genres):
+                    logger.debug(f"Filtered out '{item.title}': excluded genre")
+                    continue
+
+            if filters.with_genres and item.genres:
+                item_genre_ids = [
+                    g if isinstance(g, int) else int(g) if str(g).isdigit() else 0
+                    for g in item.genres
+                ]
+                if not any(g in item_genre_ids for g in filters.with_genres):
+                    logger.debug(f"Filtered out '{item.title}': missing required genre")
+                    continue
+
             filtered.append(item)
 
         # Apply limit
