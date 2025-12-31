@@ -61,6 +61,10 @@ class OpenAISettings(BaseModel):
         default=10,
         description="Number of prompt JSON files to keep (0=unlimited)"
     )
+    poster_logo_text: str = Field(
+        default="NETFLEX",
+        description="Logo text displayed at bottom of generated posters"
+    )
 
 
 class RadarrSettings(BaseModel):
@@ -140,6 +144,7 @@ class Settings(BaseSettings):
     openai_explicit_refs: bool = Field(default=False)
     openai_poster_history_limit: int = Field(default=5)
     openai_prompt_history_limit: int = Field(default=10)
+    openai_poster_logo_text: str = Field(default="NETFLEX")
 
     # Radarr
     radarr_url: str = Field(default="http://localhost:7878")
@@ -262,6 +267,7 @@ class Settings(BaseSettings):
             explicit_refs=self.openai_explicit_refs,
             poster_history_limit=self.openai_poster_history_limit,
             prompt_history_limit=self.openai_prompt_history_limit,
+            poster_logo_text=self.openai_poster_logo_text,
         )
 
     @property

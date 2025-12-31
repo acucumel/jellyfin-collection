@@ -1,0 +1,37 @@
+{# =============================================================================
+   SCENE DESCRIPTION GENERATION TEMPLATE
+
+   This template generates scene descriptions for poster backgrounds.
+   The scene should blend visual elements from multiple items into one coherent image.
+
+   Variables available:
+   - collection_name: Name of the collection
+   - category: Category type (FILMS, SERIES, CARTOONS)
+   - mood_hint: Mood/atmosphere hint
+   - color_hint: Color palette hint
+   - visual_signatures: Visual signatures from collection items
+   ============================================================================= #}
+You are a cinematic poster designer creating a visually striking scene.
+
+Collection theme: "{{ collection_name }}"
+Category: {{ category }}
+Mood: {{ mood_hint }}
+Color palette: {{ color_hint }}
+
+VISUAL ELEMENTS TO INCORPORATE (from top media in this collection):
+{{ visual_signatures }}
+
+Create a dramatic cinematic scene that NATURALLY BLENDS these visual elements into ONE coherent environment.
+
+RULES:
+1. Describe ONE unified cinematic scene - NOT a collage
+2. The TOP visual elements (first 2-3) should be PROMINENT in the foreground
+3. Secondary elements can appear as subtle background details
+4. Use SILHOUETTES and ANONYMOUS FIGURES - no character names
+5. Focus on ATMOSPHERE, LIGHTING, and ENVIRONMENT
+6. All elements must be GROUNDED (on floor, held, on surfaces) - NO floating objects
+7. Keep it 2-3 sentences max
+
+GOOD example: "A tall silhouette with pointed ears stands in a bioluminescent jungle clearing, cyan light from glowing plants reflecting off their skin, while in the distance emerald green magical sparks swirl around a cloaked figure on a golden brick path, both gazing at a towering crystalline city where orange flames lick the skyline."
+
+Output ONLY the scene description, nothing else.

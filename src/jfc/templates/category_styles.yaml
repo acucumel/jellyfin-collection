@@ -1,0 +1,42 @@
+# =============================================================================
+# CATEGORY STYLES CONFIGURATION
+#
+# Defines the artistic direction for each category type.
+# Each category has:
+#   - poster_style: Main style descriptor
+#   - base_mood: Overall mood and atmosphere
+#   - scene_context: Context for scene generation
+#   - lighting_style: Lighting instructions
+#   - color_override: (optional) Override default colors
+# =============================================================================
+
+FILMS:
+  poster_style: "Cinematic blockbuster"
+  base_mood: "Ultra-detailed, dramatic lighting, epic scale, modern Hollywood spectacle."
+  scene_context: "cinematic movie scene"
+  lighting_style: "Dramatic three-point lighting with rim light, golden hour ambiance or moody blue hour"
+
+SERIES:
+  poster_style: "Prestige TV"
+  base_mood: "Ultra-detailed, binge-worthy, prestige TV aesthetics."
+  scene_context: "prestige TV scene"
+  lighting_style: "Soft diffused lighting with dramatic shadows, intimate atmosphere"
+
+CARTOONS:
+  poster_style: "Bright and colorful Pixar/Disney-style 3D animated"
+  base_mood: "Vibrant saturated colors, joyful atmosphere, family-friendly, whimsical and magical, 100% child-safe."
+  scene_context: "cheerful animated adventure scene"
+  lighting_style: "Bright sunny lighting with rainbow-colored accents, magical sparkles and warm glows"
+  color_override: "bright primary colors (red, blue, yellow) + candy pastels + golden sunshine"
+
+# =============================================================================
+# CUSTOM CATEGORIES
+#
+# Add your own categories below. Example:
+#
+# DOCUMENTARIES:
+#   poster_style: "Documentary"
+#   base_mood: "Authentic, thought-provoking, journalistic"
+#   scene_context: "documentary exploration scene"
+#   lighting_style: "Natural lighting, candid photography style"
+# =============================================================================
