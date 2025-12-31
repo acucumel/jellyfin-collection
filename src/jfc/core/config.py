@@ -198,6 +198,11 @@ class SchedulerSettings(BaseModel):
     run_on_start: bool = Field(default=True)
     # Timezone for cron expressions
     timezone: str = Field(default="Europe/Paris")
+    # Ignore individual collection schedules, process all collections on every run
+    ignore_collection_schedule: bool = Field(
+        default=False,
+        description="Ignore individual collection schedules (daily/weekly/monthly) and process all"
+    )
 
 
 class Settings(BaseSettings):
@@ -257,6 +262,7 @@ class Settings(BaseSettings):
     scheduler_posters_cron: str = Field(default="0 4 1 * *")
     scheduler_run_on_start: bool = Field(default=True)
     scheduler_timezone: str = Field(default="Europe/Paris")
+    scheduler_ignore_collection_schedule: bool = Field(default=False)
 
     # Application settings
     log_level: str = Field(default="INFO")
@@ -429,6 +435,7 @@ class Settings(BaseSettings):
             posters_cron=self.scheduler_posters_cron,
             run_on_start=self.scheduler_run_on_start,
             timezone=self.scheduler_timezone,
+            ignore_collection_schedule=self.scheduler_ignore_collection_schedule,
         )
 
 
@@ -502,10 +509,11 @@ def log_settings(settings: "Settings") -> None:
 
     # Scheduler
     logger.info("[Scheduler]")
-    logger.info(f"  Collections Cron: {settings.scheduler_collections_cron}")
-    logger.info(f"  Posters Cron:     {settings.scheduler_posters_cron or '(disabled)'}")
-    logger.info(f"  Run on Start:     {settings.scheduler_run_on_start}")
-    logger.info(f"  Timezone:         {settings.scheduler_timezone}")
+    logger.info(f"  Collections Cron:    {settings.scheduler_collections_cron}")
+    logger.info(f"  Posters Cron:        {settings.scheduler_posters_cron or '(disabled)'}")
+    logger.info(f"  Run on Start:        {settings.scheduler_run_on_start}")
+    logger.info(f"  Timezone:            {settings.scheduler_timezone}")
+    logger.info(f"  Ignore Col Schedule: {settings.scheduler_ignore_collection_schedule}")
 
     # Application
     logger.info("[Application]")
