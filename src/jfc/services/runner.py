@@ -25,6 +25,7 @@ from jfc.services.collection_builder import CollectionBuilder
 from jfc.services.poster_generator import PosterGenerator
 from jfc.services.report_generator import ReportGenerator
 from jfc.services.startup import StartupService
+from jfc.services.trakt_auth import TraktAuth
 
 
 class Runner:
@@ -53,12 +54,15 @@ class Runner:
         )
 
         self.trakt: Optional[TraktClient] = None
+        self.trakt_auth: Optional[TraktAuth] = None
         if settings.trakt.client_id:
-            self.trakt = TraktClient(
+            # Initialize Trakt auth handler for token management
+            self.trakt_auth = TraktAuth(
                 client_id=settings.trakt.client_id,
                 client_secret=settings.trakt.client_secret,
-                access_token=settings.trakt.access_token,
+                data_dir=settings.get_data_path(),
             )
+            # Note: TraktClient will be initialized in run() with valid token
 
         self.radarr: Optional[RadarrClient] = None
         if settings.radarr.api_key:
@@ -154,6 +158,21 @@ class Runner:
         Returns:
             RunReport with detailed statistics
         """
+        # Initialize Trakt client with valid token (auto-refresh if needed)
+        if self.trakt_auth and not self.trakt:
+            access_token = await self.trakt_auth.get_valid_token()
+            if access_token:
+                self.trakt = TraktClient(
+                    client_id=self.settings.trakt.client_id,
+                    client_secret=self.settings.trakt.client_secret,
+                    access_token=access_token,
+                )
+                # Update builder with Trakt client
+                self.builder.trakt = self.trakt
+                logger.info("Trakt client initialized with valid token")
+            else:
+                logger.warning("Trakt not authenticated. Run 'jfc trakt-auth' to authenticate.")
+
         # Run startup sequence (only once)
         if not self._startup_done:
             startup_ok = await self.startup.run_startup(matcher=self.builder.matcher)

@@ -248,7 +248,21 @@ docker-compose exec jellyfin-collection jfc validate
 jfc validate
 ```
 
-### 3. Dry Run
+### 3. Authenticate with Trakt (Optional)
+
+If you use Trakt lists or charts, authenticate using the OAuth Device Code flow:
+
+```bash
+# Docker
+docker-compose exec jellyfin-collection jfc trakt-auth
+
+# Manual
+jfc trakt-auth
+```
+
+This will display a code and URL. Open the URL in your browser, log into Trakt, and enter the code. Tokens are saved automatically and refreshed when needed.
+
+### 4. Dry Run
 
 Preview what changes will be made without actually modifying anything:
 
@@ -260,7 +274,7 @@ docker-compose exec jellyfin-collection jfc run --dry-run
 jfc run --dry-run
 ```
 
-### 4. Full Run
+### 5. Full Run
 
 When everything looks good:
 
