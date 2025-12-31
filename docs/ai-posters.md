@@ -83,6 +83,9 @@ OPENAI_ENABLED=true
 # Include item titles in signatures (better context, more tokens)
 OPENAI_EXPLICIT_REFS=false
 
+# Force poster regeneration on every run (useful for testing)
+OPENAI_FORCE_REGENERATE=false
+
 # Keep N old posters in history
 OPENAI_POSTER_HISTORY_LIMIT=5
 
@@ -138,11 +141,31 @@ SCHEDULER_POSTERS_CRON=0 4 1 * *
 SCHEDULER_POSTERS_CRON=
 ```
 
-Force immediate regeneration:
+### Force Regeneration
 
 ```bash
+# Regenerate all posters immediately
+jfc regenerate-posters
+
+# Regenerate specific library/collection
+jfc regenerate-posters -l Films
+jfc regenerate-posters -l Films -c "Trending Movies"
+
+# Or use run with --force-posters flag
 jfc run --force-posters
 ```
+
+### Testing Mode
+
+For testing, you can force regeneration on every run:
+
+```bash
+# In .env
+OPENAI_FORCE_REGENERATE=true
+SCHEDULER_RUN_ON_START=true
+```
+
+This will regenerate all posters each time the scheduler starts.
 
 ## Manual Posters
 
@@ -320,7 +343,7 @@ If a template file is missing from `config/templates/`, JFC uses built-in defaul
 - Update JFC without losing customizations
 - Reset a template by deleting it from `config/templates/`
 
-See [docs/examples/templates/](../examples/templates/) for complete examples.
+See [examples/templates/](examples/templates/) for complete examples.
 
 ## Next Steps
 

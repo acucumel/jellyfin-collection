@@ -144,7 +144,7 @@ class Runner:
         libraries: Optional[list[str]] = None,
         collections: Optional[list[str]] = None,
         scheduled: bool = False,
-        force_posters: bool = False,
+        force_posters: bool | None = None,
     ) -> RunReport:
         """
         Run collection updates.
@@ -158,6 +158,10 @@ class Runner:
         Returns:
             RunReport with detailed statistics
         """
+        # Apply env var default if force_posters not explicitly set
+        if force_posters is None:
+            force_posters = self.settings.openai.force_regenerate
+
         # Initialize Trakt client with valid token (auto-refresh if needed)
         if self.trakt_auth and not self.trakt:
             access_token = await self.trakt_auth.get_valid_token()

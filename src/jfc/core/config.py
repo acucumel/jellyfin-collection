@@ -53,6 +53,10 @@ class OpenAISettings(BaseModel):
         default=False,
         description="Include show titles in visual signatures for better context"
     )
+    force_regenerate: bool = Field(
+        default=False,
+        description="Force poster regeneration on every run (useful for testing)"
+    )
     poster_history_limit: int = Field(
         default=5,
         description="Number of old posters to keep (0=unlimited)"
@@ -142,6 +146,7 @@ class Settings(BaseSettings):
     openai_api_key: Optional[str] = Field(default=None)
     openai_enabled: bool = Field(default=False)
     openai_explicit_refs: bool = Field(default=False)
+    openai_force_regenerate: bool = Field(default=False)
     openai_poster_history_limit: int = Field(default=5)
     openai_prompt_history_limit: int = Field(default=10)
     openai_poster_logo_text: str = Field(default="NETFLEX")
@@ -264,6 +269,7 @@ class Settings(BaseSettings):
             api_key=self.openai_api_key,
             enabled=self.openai_enabled,
             explicit_refs=self.openai_explicit_refs,
+            force_regenerate=self.openai_force_regenerate,
             poster_history_limit=self.openai_poster_history_limit,
             prompt_history_limit=self.openai_prompt_history_limit,
             poster_logo_text=self.openai_poster_logo_text,
