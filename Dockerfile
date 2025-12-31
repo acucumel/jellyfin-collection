@@ -26,8 +26,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy and install dependencies
+# Copy source and install package
 COPY pyproject.toml README.md ./
+COPY src/ ./src/
 RUN pip install --no-cache-dir .
 
 # -----------------------------------------------------------------------------
