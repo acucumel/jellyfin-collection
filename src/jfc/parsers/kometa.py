@@ -139,7 +139,11 @@ class KometaParser:
 
         # Override with collection-specific values
         filters = self._parse_filters(config.get("filters", {}), base_filters)
-        schedule = CollectionSchedule.from_kometa(config.get("schedule")) or base_schedule
+        # Only override schedule if explicitly set in collection config
+        if config.get("schedule"):
+            schedule = CollectionSchedule.from_kometa(config["schedule"])
+        else:
+            schedule = base_schedule
 
         # Parse tmdb_discover if present
         tmdb_discover = None

@@ -36,49 +36,85 @@ This guide covers installing Jellyfin Collection (JFC) using Docker or manual in
 
 ```bash
 mkdir jellyfin-collection && cd jellyfin-collection
+mkdir -p config data logs
 ```
 
-2. **Download docker-compose.yml**
+2. **Create `docker-compose.yml`**
 
-```bash
-curl -O https://raw.githubusercontent.com/acucumel/jellyfin-collection/master/docker-compose.yml
+```yaml
+services:
+  jellyfin-collection:
+    image: ghcr.io/acucumel/jellyfin-collection:latest
+    container_name: jellyfin-collection
+    restart: unless-stopped
+    environment:
+      # Required
+      - JELLYFIN_URL=http://your-jellyfin-server:8096
+      - JELLYFIN_API_KEY=your_jellyfin_api_key
+      - TMDB_API_KEY=your_tmdb_api_key
+
+      # Optional - Radarr (auto-request missing movies)
+      - RADARR_URL=http://radarr:7878
+      - RADARR_API_KEY=your_radarr_api_key
+
+      # Optional - Sonarr (auto-request missing series)
+      - SONARR_URL=http://sonarr:8989
+      - SONARR_API_KEY=your_sonarr_api_key
+
+      # Optional - Discord notifications
+      - DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxx
+
+      # Optional - AI poster generation
+      - OPENAI_API_KEY=sk-xxx
+      - OPENAI_ENABLED=true
+
+      # Scheduler (default: daily at 3am)
+      - SCHEDULER_COLLECTIONS_CRON=0 3 * * *
+      - SCHEDULER_TIMEZONE=Europe/Paris
+      - SCHEDULER_RUN_ON_START=true
+    volumes:
+      - ./config:/config:ro    # Your Kometa YAML files
+      - ./data:/data           # Generated data (posters, cache)
+      - ./logs:/logs           # Application logs
+    networks:
+      - media-stack
+
+networks:
+  media-stack:
+    external: true
 ```
 
-3. **Create environment file**
+3. **Add your Kometa configuration files to `./config/`**
 
-```bash
-curl -O https://raw.githubusercontent.com/acucumel/jellyfin-collection/master/.env.example
-cp .env.example .env
+At minimum, create `config/config.yml`:
+
+```yaml
+libraries:
+  Films:
+    collection_files:
+      - file: Films.yml
+  Séries:
+    collection_files:
+      - file: Series.yml
 ```
 
-4. **Edit `.env` with your settings**
+And a collection file like `config/Films.yml`:
 
-```bash
-nano .env
+```yaml
+collections:
+  "Trending Movies":
+    tmdb_trending_weekly: 20
+    sync_mode: sync
+    schedule: daily
 ```
 
-At minimum, set these values:
-
-```bash
-JELLYFIN_URL=http://your-jellyfin-server:8096
-JELLYFIN_API_KEY=your_jellyfin_api_key
-TMDB_API_KEY=your_tmdb_api_key
-```
-
-5. **Create config directory and add Kometa YAML files**
-
-```bash
-mkdir -p config
-# Copy your Kometa config files here
-```
-
-6. **Start the container**
+4. **Start the container**
 
 ```bash
 docker-compose up -d
 ```
 
-7. **View logs**
+5. **View logs**
 
 ```bash
 docker-compose logs -f
@@ -103,15 +139,19 @@ docker-compose logs -f
 ### Using Docker CLI
 
 ```bash
+# Create directories first
+mkdir -p config data logs
+
+# Run container
 docker run -d \
   --name jellyfin-collection \
   --restart unless-stopped \
   -e JELLYFIN_URL=http://your-jellyfin:8096 \
   -e JELLYFIN_API_KEY=your_api_key \
   -e TMDB_API_KEY=your_tmdb_key \
-  -v ./config:/config:ro \
-  -v jfc-data:/data \
-  -v jfc-logs:/logs \
+  -v $(pwd)/config:/config:ro \
+  -v $(pwd)/data:/data \
+  -v $(pwd)/logs:/logs \
   ghcr.io/acucumel/jellyfin-collection:latest
 ```
 

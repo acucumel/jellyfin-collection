@@ -53,9 +53,6 @@ services:
       - SCHEDULER_TIMEZONE=${SCHEDULER_TIMEZONE:-Europe/Paris}
       # Application
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - CONFIG_PATH=/config
-      - DATA_PATH=/data
-      - LOG_PATH=/logs
       - DRY_RUN=${DRY_RUN:-false}
     volumes:
       - ./config:/config:ro          # Configurations Kometa (YAML)
