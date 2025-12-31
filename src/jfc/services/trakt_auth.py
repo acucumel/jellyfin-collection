@@ -187,7 +187,14 @@ class TraktAuth:
                     return tokens
 
                 elif token_response.status_code == 400:
-                    error = token_response.json().get("error")
+                    # Handle empty response body
+                    try:
+                        error_data = token_response.json()
+                        error = error_data.get("error", "unknown")
+                    except Exception:
+                        # Empty body - likely authorization_pending
+                        error = "authorization_pending"
+
                     if error == "authorization_pending":
                         # Still waiting for user
                         continue
