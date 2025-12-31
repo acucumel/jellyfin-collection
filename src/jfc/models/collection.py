@@ -231,6 +231,10 @@ class Collection(BaseModel):
     library_name: str
     items: list[CollectionItem] = Field(default_factory=list)
 
+    # Original source items (before filtering) for poster generation
+    # This ensures the poster reflects the true trending/source order
+    source_items: list[CollectionItem] = Field(default_factory=list)
+
     # Jellyfin collection ID (if exists)
     jellyfin_id: Optional[str] = None
 
