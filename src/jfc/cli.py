@@ -179,6 +179,9 @@ def schedule(
     runner = Runner(settings)
     scheduler = Scheduler(timezone=settings.scheduler.timezone)
 
+    # Lock to prevent concurrent runs
+    run_lock = asyncio.Lock()
+
     async def collections_sync():
         """Daily collection sync.
 
@@ -188,25 +191,31 @@ def schedule(
 
         Collection schedule can be ignored with SCHEDULER_IGNORE_COLLECTION_SCHEDULE=true.
         """
-        force_posters = settings.openai.force_regenerate
-        ignore_schedule = settings.scheduler.ignore_collection_schedule
+        # Skip if another run is in progress
+        if run_lock.locked():
+            logger.warning("Skipping scheduled collection sync - another run is already in progress")
+            return
 
-        mode_parts = []
-        if force_posters:
-            mode_parts.append("force posters")
-        if ignore_schedule:
-            mode_parts.append("ignore schedules")
-        mode_str = f" ({', '.join(mode_parts)})" if mode_parts else ""
+        async with run_lock:
+            force_posters = settings.openai.force_regenerate
+            ignore_schedule = settings.scheduler.ignore_collection_schedule
 
-        logger.info(f"Starting scheduled collection sync{mode_str}...")
-        try:
-            await runner.run(
-                scheduled=True,
-                force_posters=force_posters,
-                ignore_schedule=ignore_schedule,
-            )
-        except Exception as e:
-            logger.error(f"Scheduled collection sync failed: {e}")
+            mode_parts = []
+            if force_posters:
+                mode_parts.append("force posters")
+            if ignore_schedule:
+                mode_parts.append("ignore schedules")
+            mode_str = f" ({', '.join(mode_parts)})" if mode_parts else ""
+
+            logger.info(f"Starting scheduled collection sync{mode_str}...")
+            try:
+                await runner.run(
+                    scheduled=True,
+                    force_posters=force_posters,
+                    ignore_schedule=ignore_schedule,
+                )
+            except Exception as e:
+                logger.error(f"Scheduled collection sync failed: {e}")
 
     async def posters_regeneration():
         """Monthly poster regeneration - always forces regeneration of all posters.
@@ -217,16 +226,22 @@ def schedule(
 
         Always ignores collection schedules to process all collections.
         """
-        logger.info("Starting scheduled poster regeneration (force all, ignore schedules)...")
-        try:
-            await runner.run(
-                scheduled=True,
-                force_posters=True,  # Always force on scheduled runs
-                posters_only=True,
-                ignore_schedule=True,  # Always process all collections for poster regen
-            )
-        except Exception as e:
-            logger.error(f"Scheduled poster regeneration failed: {e}")
+        # Skip if another run is in progress
+        if run_lock.locked():
+            logger.warning("Skipping scheduled poster regeneration - another run is already in progress")
+            return
+
+        async with run_lock:
+            logger.info("Starting scheduled poster regeneration (force all, ignore schedules)...")
+            try:
+                await runner.run(
+                    scheduled=True,
+                    force_posters=True,  # Always force on scheduled runs
+                    posters_only=True,
+                    ignore_schedule=True,  # Always process all collections for poster regen
+                )
+            except Exception as e:
+                logger.error(f"Scheduled poster regeneration failed: {e}")
 
     async def _run_scheduler():
         """Main async scheduler loop."""
