@@ -145,6 +145,7 @@ class Runner:
         collections: Optional[list[str]] = None,
         scheduled: bool = False,
         force_posters: bool | None = None,
+        posters_only: bool = False,
     ) -> RunReport:
         """
         Run collection updates.
@@ -154,6 +155,7 @@ class Runner:
             collections: Optional list of collection names to process
             scheduled: Whether this is a scheduled run
             force_posters: Force regeneration of all posters
+            posters_only: Only generate posters, skip collection sync
 
         Returns:
             RunReport with detailed statistics
@@ -264,13 +266,14 @@ class Runner:
                         media_type=media_type,
                     )
 
-                    # Sync to Jellyfin
+                    # Sync to Jellyfin (or just posters if posters_only mode)
                     added, removed, poster_path = await self.builder.sync_collection(
                         collection=collection,
                         report=col_report,
                         media_type=media_type,
-                        add_missing_to_arr=True,
+                        add_missing_to_arr=not posters_only,  # Skip arr sync in posters_only mode
                         force_poster=force_posters,
+                        posters_only=posters_only,
                     )
 
                     col_report.success = True

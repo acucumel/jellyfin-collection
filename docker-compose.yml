@@ -1,4 +1,8 @@
-version: "3.8"
+# =============================================================================
+# JELLYFIN COLLECTION - Docker Compose
+# =============================================================================
+# Configuration principale dans config/config.yml
+# Secrets (API keys) dans .env ou variables d'environnement
 
 services:
   jellyfin-collection:
@@ -8,59 +12,44 @@ services:
     container_name: jellyfin-collection
     restart: unless-stopped
     environment:
-      # User/Group IDs for file permissions
+      # User/Group IDs (permissions fichiers)
       - PUID=${PUID:-1000}
       - PGID=${PGID:-1000}
-      # Jellyfin
-      - JELLYFIN_URL=${JELLYFIN_URL}
+
+      # =======================================================================
+      # SECRETS UNIQUEMENT - La config est dans config/config.yml
+      # =======================================================================
+
+      # Jellyfin (requis)
       - JELLYFIN_API_KEY=${JELLYFIN_API_KEY}
-      # TMDb
+
+      # TMDb (requis)
       - TMDB_API_KEY=${TMDB_API_KEY}
-      - TMDB_LANGUAGE=${TMDB_LANGUAGE:-fr}
-      - TMDB_REGION=${TMDB_REGION:-FR}
-      # Trakt (tokens managed automatically via jfc trakt-auth)
+
+      # Trakt (optionnel - tokens gérés via jfc trakt-auth)
       - TRAKT_CLIENT_ID=${TRAKT_CLIENT_ID:-}
       - TRAKT_CLIENT_SECRET=${TRAKT_CLIENT_SECRET:-}
-      # MDBList
+
+      # MDBList (optionnel)
       - MDBLIST_API_KEY=${MDBLIST_API_KEY:-}
-      # Radarr
-      - RADARR_URL=${RADARR_URL:-}
+
+      # Radarr (optionnel)
       - RADARR_API_KEY=${RADARR_API_KEY:-}
-      - RADARR_ROOT_FOLDER=${RADARR_ROOT_FOLDER:-/movies}
-      - RADARR_QUALITY_PROFILE=${RADARR_QUALITY_PROFILE:-HD-1080p}
-      - RADARR_DEFAULT_TAG=${RADARR_DEFAULT_TAG:-jfc}
-      # Sonarr
-      - SONARR_URL=${SONARR_URL:-}
+
+      # Sonarr (optionnel)
       - SONARR_API_KEY=${SONARR_API_KEY:-}
-      - SONARR_ROOT_FOLDER=${SONARR_ROOT_FOLDER:-/tv}
-      - SONARR_QUALITY_PROFILE=${SONARR_QUALITY_PROFILE:-HD-1080p}
-      - SONARR_DEFAULT_TAG=${SONARR_DEFAULT_TAG:-jfc}
-      # Discord
-      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
-      - DISCORD_WEBHOOK_ERROR=${DISCORD_WEBHOOK_ERROR:-}
-      - DISCORD_WEBHOOK_RUN_START=${DISCORD_WEBHOOK_RUN_START:-}
-      - DISCORD_WEBHOOK_RUN_END=${DISCORD_WEBHOOK_RUN_END:-}
-      - DISCORD_WEBHOOK_CHANGES=${DISCORD_WEBHOOK_CHANGES:-}
-      # OpenAI (poster generation)
+
+      # OpenAI (optionnel - génération posters IA)
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - OPENAI_ENABLED=${OPENAI_ENABLED:-false}
-      - OPENAI_EXPLICIT_REFS=${OPENAI_EXPLICIT_REFS:-false}
-      - OPENAI_FORCE_REGENERATE=${OPENAI_FORCE_REGENERATE:-false}
-      - OPENAI_POSTER_HISTORY_LIMIT=${OPENAI_POSTER_HISTORY_LIMIT:-5}
-      - OPENAI_PROMPT_HISTORY_LIMIT=${OPENAI_PROMPT_HISTORY_LIMIT:-10}
-      - OPENAI_POSTER_LOGO_TEXT=${OPENAI_POSTER_LOGO_TEXT:-NETFLEX}
-      # Scheduler
-      - SCHEDULER_COLLECTIONS_CRON=${SCHEDULER_COLLECTIONS_CRON:-0 3 * * *}
-      - SCHEDULER_POSTERS_CRON=${SCHEDULER_POSTERS_CRON:-0 4 1 * *}
-      - SCHEDULER_RUN_ON_START=${SCHEDULER_RUN_ON_START:-true}
-      - SCHEDULER_TIMEZONE=${SCHEDULER_TIMEZONE:-Europe/Paris}
-      # Application
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - DRY_RUN=${DRY_RUN:-false}
+
     volumes:
-      - ./config:/config:ro          # Configurations Kometa (YAML)
-      - ./data:/data                 # Données (posters, cache, reports)
-      - ./logs:/logs                 # Logs applicatifs
+      # config.yml + fichiers YAML collections (lecture seule)
+      - ./config:/config:ro
+      # Données générées (posters, cache, reports, tokens)
+      - ./data:/data
+      # Logs applicatifs
+      - ./logs:/logs
+
     networks:
       - media-stack
 

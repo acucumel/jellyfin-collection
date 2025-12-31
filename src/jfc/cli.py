@@ -178,10 +178,19 @@ def schedule(
             logger.error(f"Scheduled collection sync failed: {e}")
 
     async def posters_regeneration():
-        """Monthly poster regeneration."""
-        logger.info("Starting scheduled poster regeneration...")
+        """Monthly poster regeneration - always forces regeneration of all posters.
+
+        The scheduled job always regenerates all posters because collection content
+        changes over time. Use the manual 'regenerate-posters --missing-only' command
+        if you only want to generate missing posters.
+        """
+        logger.info("Starting scheduled poster regeneration (force all)...")
         try:
-            await runner.run(scheduled=True, force_posters=True)
+            await runner.run(
+                scheduled=True,
+                force_posters=True,  # Always force on scheduled runs
+                posters_only=True,
+            )
         except Exception as e:
             logger.error(f"Scheduled poster regeneration failed: {e}")
 
@@ -205,7 +214,7 @@ def schedule(
                 func=posters_regeneration,
                 cron_expression=post_cron,
             )
-            console.print(f"[green]✓[/green] Poster regeneration scheduled: [cyan]{post_cron}[/cyan]")
+            console.print(f"[green]✓[/green] Poster regeneration scheduled: [cyan]{post_cron}[/cyan] (force all)")
         else:
             console.print("[yellow]![/yellow] Poster regeneration disabled (no cron set)")
 
@@ -566,8 +575,19 @@ def regenerate_posters(
     collections: Optional[list[str]] = typer.Option(
         None, "--collection", "-c", help="Collections to process (can be repeated)"
     ),
+    missing_only: Optional[bool] = typer.Option(
+        None, "--missing-only/--force-all", "-m/-f",
+        help="Only generate missing posters, or force regenerate all"
+    ),
 ) -> None:
-    """Force regeneration of all AI posters (without full collection sync)."""
+    """Regenerate AI posters for collections.
+
+    By default, uses the 'missing_only' setting from config.yml (openai.missing_only).
+    Use --missing-only to only generate posters for collections that don't have one yet.
+    Use --force-all to regenerate all posters regardless of existing ones.
+
+    Note: The scheduled poster job always uses --force-all mode.
+    """
     settings = get_settings()
     log_dir = settings.get_log_path()
     setup_logging(level=settings.log_level, log_dir=log_dir)
@@ -578,6 +598,9 @@ def regenerate_posters(
         console.print("Set OPENAI_API_KEY and OPENAI_ENABLED=true in your .env")
         raise typer.Exit(1)
 
+    # Use CLI flag if provided, otherwise use setting from config
+    use_missing_only = missing_only if missing_only is not None else settings.openai.missing_only
+
     from jfc.services.runner import Runner
 
     async def _run():
@@ -585,12 +608,17 @@ def regenerate_posters(
 
         runner = Runner(settings)
         try:
-            console.print("[cyan]Regenerating all posters...[/cyan]")
+            if use_missing_only:
+                console.print("[cyan]Generating missing posters only...[/cyan]")
+            else:
+                console.print("[cyan]Regenerating all posters (force)...[/cyan]")
+
             report = await runner.run(
                 libraries=libraries,
                 collections=collections,
                 scheduled=False,
-                force_posters=True,
+                force_posters=not use_missing_only,  # Force only if not missing_only
+                posters_only=True,  # Skip collection sync, only do posters
             )
             console.print(
                 f"\n[green]Completed![/green] "

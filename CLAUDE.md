@@ -119,10 +119,12 @@ src/jfc/
 
 ## Key Patterns
 
-### Configuration
-- Uses `pydantic-settings` for environment variable parsing
+### Configuration (Dual System)
+- **config.yml** - Main configuration (URLs, schedules, options) - portable & versionable
+- **.env** - Secrets only (API keys) - never committed
+- Uses `pydantic-settings` with custom `YamlSettingsSource` for YAML support
+- Priority: Environment variables > .env > config.yml > defaults
 - Nested settings classes (JellyfinSettings, TMDbSettings, OpenAISettings, etc.)
-- All secrets via environment variables, never in code
 - Path separation: CONFIG_PATH, DATA_PATH, LOG_PATH for Docker
 
 ### Async HTTP Clients
@@ -157,26 +159,42 @@ src/jfc/
 - Unified item list showing matched/added/missing
 - Separate webhooks for different event types
 
-## Environment Variables
+## Configuration
 
-### Required
-- `JELLYFIN_URL`, `JELLYFIN_API_KEY`
-- `TMDB_API_KEY`
+### Secrets (.env only)
+- `JELLYFIN_API_KEY` - Required
+- `TMDB_API_KEY` - Required
+- `TRAKT_CLIENT_ID`, `TRAKT_CLIENT_SECRET` - Optional
+- `RADARR_API_KEY`, `SONARR_API_KEY` - Optional
+- `OPENAI_API_KEY` - Optional
 
-### Optional Integrations
-- `TRAKT_CLIENT_ID`, `TRAKT_CLIENT_SECRET`
-- `RADARR_URL`, `RADARR_API_KEY`
-- `SONARR_URL`, `SONARR_API_KEY`
-- `DISCORD_WEBHOOK_URL`, `DISCORD_WEBHOOK_CHANGES`
-- `OPENAI_API_KEY`, `OPENAI_ENABLED=true`
+### config.yml (all other settings)
+```yaml
+settings:
+  jellyfin:
+    url: http://jellyfin:8096
+  tmdb:
+    language: fr
+    region: FR
+  openai:
+    enabled: true
+    missing_only: true
+  radarr:
+    url: http://radarr:7878
+    root_folder: /movies
+  sonarr:
+    url: http://sonarr:8989
+    root_folder: /tv
+  discord:
+    webhook_url: https://discord.com/...
+  scheduler:
+    collections_cron: "0 17 * * *"
+    posters_cron: "0 4 1 * *"
+    run_on_start: true
+    timezone: Europe/Paris
+```
 
-### Scheduler
-- `SCHEDULER_COLLECTIONS_CRON` - Daily sync (default: 0 3 * * *)
-- `SCHEDULER_POSTERS_CRON` - Monthly posters (default: 0 4 1 * *)
-- `SCHEDULER_RUN_ON_START` - Sync on startup (default: true)
-- `SCHEDULER_TIMEZONE` - Cron timezone (default: Europe/Paris)
-
-See `.env.example` for full list.
+See `docs/configuration.md` for full reference.
 
 ## Directory Structure
 
