@@ -56,20 +56,13 @@ services:
       - CONFIG_PATH=/config
       - DATA_PATH=/data
       - LOG_PATH=/logs
-      - DATABASE_URL=sqlite+aiosqlite:///data/jfc.db
       - DRY_RUN=${DRY_RUN:-false}
     volumes:
       - ./config:/config:ro          # Configurations Kometa (YAML)
-      - jfc-data:/data               # Base de données SQLite
-      - jfc-logs:/logs               # Logs applicatifs
-    ports:
-      - "8080:8080"                   # API Web (optionnel)
+      - ./data:/data                 # Données (posters, cache, reports)
+      - ./logs:/logs                 # Logs applicatifs
     networks:
       - media-stack
-
-volumes:
-  jfc-data:
-  jfc-logs:
 
 networks:
   media-stack:

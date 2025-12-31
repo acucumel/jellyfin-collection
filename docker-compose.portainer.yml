@@ -95,16 +95,10 @@ services:
       # Configurations Kometa (YAML) - lecture seule
       - ${CONFIG_PATH:-./config}:/config:ro
       # Données persistantes (cache, posters, reports)
-      - jfc-data:/data
+      - ${DATA_PATH:-./data}:/data
       # Logs
-      - jfc-logs:/logs
+      - ${LOG_PATH:-./logs}:/logs
 
     # Réseau (adapter selon votre configuration)
     networks:
       - default
-
-volumes:
-  jfc-data:
-    name: jellyfin-collection-data
-  jfc-logs:
-    name: jellyfin-collection-logs

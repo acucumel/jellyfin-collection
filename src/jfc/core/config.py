@@ -178,7 +178,6 @@ class Settings(BaseSettings):
     config_path: Path = Field(default=Path("/config"))
     data_path: Path = Field(default=Path("/data"))
     log_path: Path = Field(default=Path("/logs"))
-    database_url: str = Field(default="sqlite+aiosqlite:///data/jfc.db")
     dry_run: bool = Field(default=False)
 
     model_config = SettingsConfigDict(
