@@ -36,30 +36,39 @@ RUN pip install --no-cache-dir .
 # -----------------------------------------------------------------------------
 FROM base AS production
 
+# Install gosu for proper privilege dropping
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gosu \
+    && rm -rf /var/lib/apt/lists/* \
+    && gosu nobody true
+
 # Copy installed packages from dependencies stage
 COPY --from=dependencies /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
 COPY --from=dependencies /usr/local/bin /usr/local/bin
 
-# Create non-root user
-RUN groupadd -r jfc && useradd -r -g jfc jfc
-
-# Create directories
-RUN mkdir -p /config /data /logs && \
-    chown -R jfc:jfc /app /config /data /logs
+# Create directories (ownership will be set by entrypoint based on PUID/PGID)
+RUN mkdir -p /config /data /logs
 
 # Copy application
-COPY --chown=jfc:jfc src/ ./src/
+COPY src/ ./src/
 
-# Switch to non-root user
-USER jfc
+# Copy entrypoint script
+COPY docker-entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Volumes
 VOLUME ["/config", "/data", "/logs"]
 
-# Healthcheck - vérifie que le process Python tourne
+# Environment defaults for PUID/PGID
+ENV PUID=1000 \
+    PGID=1000
+
+# Healthcheck
 HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
     CMD pgrep -f "jfc.cli" || exit 1
 
+# Entrypoint handles user creation and privilege drop
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+
 # Default command: run scheduler daemon
-# Override with: docker run ... python -m jfc.cli run (single run)
 CMD ["python", "-m", "jfc.cli", "schedule"]

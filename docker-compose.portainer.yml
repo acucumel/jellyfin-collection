@@ -21,6 +21,12 @@ services:
 
     environment:
       # =========================================================================
+      # USER/GROUP IDs (permissions fichiers)
+      # =========================================================================
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+
+      # =========================================================================
       # JELLYFIN (requis)
       # =========================================================================
       - JELLYFIN_URL=${JELLYFIN_URL:?JELLYFIN_URL is required}
@@ -34,11 +40,10 @@ services:
       - TMDB_REGION=${TMDB_REGION:-FR}
 
       # =========================================================================
-      # TRAKT (optionnel)
+      # TRAKT (optionnel - tokens gérés via jfc trakt-auth)
       # =========================================================================
       - TRAKT_CLIENT_ID=${TRAKT_CLIENT_ID:-}
       - TRAKT_CLIENT_SECRET=${TRAKT_CLIENT_SECRET:-}
-      - TRAKT_ACCESS_TOKEN=${TRAKT_ACCESS_TOKEN:-}
 
       # =========================================================================
       # RADARR (optionnel - ajout films manquants)
@@ -69,7 +74,9 @@ services:
       # =========================================================================
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
       - OPENAI_ENABLED=${OPENAI_ENABLED:-false}
+      - OPENAI_FORCE_REGENERATE=${OPENAI_FORCE_REGENERATE:-false}
       - OPENAI_POSTER_HISTORY_LIMIT=${OPENAI_POSTER_HISTORY_LIMIT:-5}
+      - OPENAI_POSTER_LOGO_TEXT=${OPENAI_POSTER_LOGO_TEXT:-NETFLEX}
 
       # =========================================================================
       # SCHEDULER

@@ -48,10 +48,18 @@ services:
     container_name: jellyfin-collection
     restart: unless-stopped
     environment:
+      # User/Group IDs for file permissions
+      - PUID=1000
+      - PGID=1000
+
       # Required
       - JELLYFIN_URL=http://your-jellyfin-server:8096
       - JELLYFIN_API_KEY=your_jellyfin_api_key
       - TMDB_API_KEY=your_tmdb_api_key
+
+      # Optional - Trakt (run 'jfc trakt-auth' after first start)
+      - TRAKT_CLIENT_ID=your_trakt_client_id
+      - TRAKT_CLIENT_SECRET=your_trakt_client_secret
 
       # Optional - Radarr (auto-request missing movies)
       - RADARR_URL=http://radarr:7878
