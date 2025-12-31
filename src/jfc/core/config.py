@@ -42,9 +42,11 @@ class YamlSettingsSource(PydanticBaseSettingsSource):
     def _load_yaml(self) -> None:
         """Load and parse the YAML file."""
         if not self.yaml_file.exists():
-            # Log will be available after logging is configured
-            print(f"[config] YAML config not found: {self.yaml_file}")
-            return
+            raise FileNotFoundError(
+                f"Configuration file not found: {self.yaml_file}\n"
+                f"Please create a config.yml file in your config directory.\n"
+                f"See documentation: https://github.com/acucumel/jellyfin-collection#configuration"
+            )
 
         try:
             with open(self.yaml_file, encoding="utf-8") as f:
@@ -52,10 +54,13 @@ class YamlSettingsSource(PydanticBaseSettingsSource):
             settings_data = data.get("settings", {})
             self._yaml_data = self._flatten_settings(settings_data)
             print(f"[config] Loaded {len(self._yaml_data)} settings from: {self.yaml_file}")
+        except FileNotFoundError:
+            raise  # Re-raise FileNotFoundError as-is
         except Exception as e:
-            # If YAML loading fails, log and fall back to defaults
-            print(f"[config] Failed to load YAML config: {e}")
-            pass
+            raise RuntimeError(
+                f"Failed to parse config.yml: {e}\n"
+                f"Please check your YAML syntax."
+            ) from e
 
     def _flatten_settings(self, data: dict, prefix: str = "") -> dict:
         """
