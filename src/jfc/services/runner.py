@@ -146,6 +146,7 @@ class Runner:
         scheduled: bool = False,
         force_posters: bool | None = None,
         posters_only: bool = False,
+        ignore_schedule: bool = False,
     ) -> RunReport:
         """
         Run collection updates.
@@ -156,6 +157,7 @@ class Runner:
             scheduled: Whether this is a scheduled run
             force_posters: Force regeneration of all posters
             posters_only: Only generate posters, skip collection sync
+            ignore_schedule: Ignore individual collection schedules and process all
 
         Returns:
             RunReport with detailed statistics
@@ -252,8 +254,8 @@ class Runner:
                 if collections and config.name not in collections:
                     continue
 
-                # Check schedule
-                if scheduled and not self._should_run_today(config.schedule):
+                # Check schedule (skip if ignore_schedule is True)
+                if scheduled and not ignore_schedule and not self._should_run_today(config.schedule):
                     logger.debug(f"Skipping '{config.name}' - not scheduled for today")
                     continue
 

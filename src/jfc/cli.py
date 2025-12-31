@@ -103,6 +103,9 @@ def run(
     force_posters: bool = typer.Option(
         False, "--force-posters", "-fp", help="Force regeneration of all posters"
     ),
+    ignore_schedule: bool = typer.Option(
+        False, "--ignore-schedule", "-is", help="Ignore collection schedules, process all collections"
+    ),
 ) -> None:
     """Run collection updates."""
     settings = get_settings()
@@ -132,6 +135,7 @@ def run(
                 collections=collections,
                 scheduled=False,
                 force_posters=force_posters,
+                ignore_schedule=ignore_schedule,
             )
             console.print(
                 f"\n[green]Completed![/green] "
@@ -181,14 +185,26 @@ def schedule(
         Poster regeneration depends on OPENAI_FORCE_REGENERATE setting.
         By default (False), existing posters are reused.
         Set OPENAI_FORCE_REGENERATE=true to force poster regeneration on every sync.
+
+        Collection schedule can be ignored with SCHEDULER_IGNORE_COLLECTION_SCHEDULE=true.
         """
         force_posters = settings.openai.force_regenerate
+        ignore_schedule = settings.scheduler.ignore_collection_schedule
+
+        mode_parts = []
         if force_posters:
-            logger.info("Starting scheduled collection sync (with poster regeneration)...")
-        else:
-            logger.info("Starting scheduled collection sync...")
+            mode_parts.append("force posters")
+        if ignore_schedule:
+            mode_parts.append("ignore schedules")
+        mode_str = f" ({', '.join(mode_parts)})" if mode_parts else ""
+
+        logger.info(f"Starting scheduled collection sync{mode_str}...")
         try:
-            await runner.run(scheduled=True, force_posters=force_posters)
+            await runner.run(
+                scheduled=True,
+                force_posters=force_posters,
+                ignore_schedule=ignore_schedule,
+            )
         except Exception as e:
             logger.error(f"Scheduled collection sync failed: {e}")
 
@@ -198,13 +214,16 @@ def schedule(
         The scheduled job always regenerates all posters because collection content
         changes over time. Use the manual 'regenerate-posters --missing-only' command
         if you only want to generate missing posters.
+
+        Always ignores collection schedules to process all collections.
         """
-        logger.info("Starting scheduled poster regeneration (force all)...")
+        logger.info("Starting scheduled poster regeneration (force all, ignore schedules)...")
         try:
             await runner.run(
                 scheduled=True,
                 force_posters=True,  # Always force on scheduled runs
                 posters_only=True,
+                ignore_schedule=True,  # Always process all collections for poster regen
             )
         except Exception as e:
             logger.error(f"Scheduled poster regeneration failed: {e}")
@@ -220,8 +239,14 @@ def schedule(
             func=collections_sync,
             cron_expression=col_cron,
         )
-        poster_mode = "+ posters" if settings.openai.force_regenerate else "no posters"
-        console.print(f"[green]✓[/green] Collection sync scheduled: [cyan]{col_cron}[/cyan] ({poster_mode})")
+        # Build mode description
+        modes = []
+        if settings.openai.force_regenerate:
+            modes.append("+ posters")
+        if settings.scheduler.ignore_collection_schedule:
+            modes.append("ignore schedules")
+        mode_str = ", ".join(modes) if modes else "default"
+        console.print(f"[green]✓[/green] Collection sync scheduled: [cyan]{col_cron}[/cyan] ({mode_str})")
 
         # Schedule poster regeneration job (if enabled)
         if post_cron and post_cron.strip():
@@ -595,6 +620,10 @@ def regenerate_posters(
         None, "--missing-only/--force-all", "-m/-f",
         help="Only generate missing posters, or force regenerate all"
     ),
+    ignore_schedule: bool = typer.Option(
+        True, "--ignore-schedule/--respect-schedule",
+        help="Ignore collection schedules (default: ignore)"
+    ),
 ) -> None:
     """Regenerate AI posters for collections.
 
@@ -602,7 +631,10 @@ def regenerate_posters(
     Use --missing-only to only generate posters for collections that don't have one yet.
     Use --force-all to regenerate all posters regardless of existing ones.
 
-    Note: The scheduled poster job always uses --force-all mode.
+    By default, ignores collection schedules to process all collections.
+    Use --respect-schedule to only process collections scheduled for today.
+
+    Note: The scheduled poster job always uses --force-all and --ignore-schedule.
     """
     settings = get_settings()
     log_dir = settings.get_log_path()
@@ -635,6 +667,7 @@ def regenerate_posters(
                 scheduled=False,
                 force_posters=not use_missing_only,  # Force only if not missing_only
                 posters_only=True,  # Skip collection sync, only do posters
+                ignore_schedule=ignore_schedule,
             )
             console.print(
                 f"\n[green]Completed![/green] "
