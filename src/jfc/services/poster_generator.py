@@ -365,6 +365,9 @@ class PosterGenerator:
         theme = self._get_collection_theme(config.name)
         style = self.category_styles.get(category, self.category_styles.get("FILMS", {}))
 
+        # Clean collection name for display (remove "(Films)", emojis, etc.)
+        display_name = self._clean_display_name(config.name)
+
         # Override mood and colors for CARTOONS
         if category == "CARTOONS":
             mood_hint = "joyful, magical, whimsical, family-friendly, colorful adventure"
@@ -386,7 +389,7 @@ IMPORTANT FOR CARTOONS:
         template_content = self._get_template("scene_description.j2")
         template = self.jinja_env.from_string(template_content)
         base_prompt = template.render(
-            collection_name=config.name,
+            collection_name=display_name,
             category=category,
             mood_hint=mood_hint,
             color_hint=color_hint,
@@ -641,6 +644,9 @@ IMPORTANT FOR CARTOONS:
         style = self.category_styles.get(category, self.category_styles.get("FILMS", {}))
         theme = self._get_collection_theme(config.name)
 
+        # Clean collection name for display (remove "(Films)", emojis, etc.)
+        display_name = self._clean_display_name(config.name)
+
         # Use color override for specific categories (e.g., CARTOONS)
         color_palette = style.get("color_override", theme.get("color_hint", "cinematic blues + warm highlights"))
 
@@ -655,7 +661,7 @@ IMPORTANT FOR CARTOONS:
         return template.render(
             poster_style=style.get("poster_style", "Cinematic"),
             category=category,
-            collection_display_name=config.name,
+            collection_display_name=display_name,
             scene_description=f"{scene_prefix}: {scene_description}",
             color_palette=color_palette,
             mood_style=style.get("base_mood", "Dramatic and engaging"),
@@ -741,6 +747,29 @@ IMPORTANT FOR CARTOONS:
         # Remove emojis and special chars
         safe = "".join(c for c in name if c.isalnum() or c in " _-")
         return safe.strip().replace(" ", "_").lower()
+
+    def _clean_display_name(self, name: str) -> str:
+        """
+        Clean collection name for display on poster.
+
+        Removes:
+        - Category suffixes: (Films), (Séries), (Cartoons), etc.
+
+        Keeps:
+        - Emojis (they add visual interest)
+
+        Example: "🔥 Tendances (Films)" -> "🔥 Tendances"
+        """
+        import re
+
+        # Remove category suffixes (case insensitive, with or without accents)
+        suffixes_pattern = r'\s*\((Films?|Séries?|Series?|Cartoons?|TV|Shows?)\)\s*$'
+        cleaned = re.sub(suffixes_pattern, '', name, flags=re.IGNORECASE)
+
+        # Clean up whitespace
+        cleaned = cleaned.strip()
+
+        return cleaned if cleaned else name  # Fallback to original if empty
 
 
 # =============================================================================
