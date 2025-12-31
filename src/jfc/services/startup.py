@@ -2,6 +2,7 @@
 
 from typing import Optional
 
+import httpx
 from loguru import logger
 
 from jfc.clients.jellyfin import JellyfinClient
@@ -127,6 +128,20 @@ class StartupService:
         else:
             logger.info("  ⏭ Sonarr: Not configured")
 
+        # OpenAI (optional, for poster generation)
+        if self.settings.openai.enabled and self.settings.openai.api_key:
+            openai_ok, openai_msg = await self._check_openai()
+            results["OpenAI"] = openai_ok
+            if openai_ok:
+                logger.success(f"  ✓ OpenAI: {openai_msg}")
+            else:
+                logger.error(f"  ✗ OpenAI: {openai_msg}")
+                logger.warning("    ⚠ AI poster generation will fail!")
+        elif self.settings.openai.enabled:
+            logger.warning("  ⚠ OpenAI: Enabled but no API key configured")
+        else:
+            logger.info("  ⏭ OpenAI: Not enabled")
+
         # Summary
         ok_count = sum(1 for v in results.values() if v)
         total_count = len(results)
@@ -136,6 +151,65 @@ class StartupService:
             logger.warning(f"⚠ Connection check: {ok_count}/{total_count} services OK")
 
         return results
+
+    async def _check_openai(self) -> tuple[bool, str]:
+        """
+        Check OpenAI API connectivity and credits.
+
+        Returns:
+            Tuple of (success, message)
+        """
+        api_key = self.settings.openai.api_key
+        if not api_key:
+            return False, "No API key configured"
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                # First check: verify API key by listing models
+                response = await client.get(
+                    "https://api.openai.com/v1/models",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                )
+
+                if response.status_code == 401:
+                    return False, "Invalid API key"
+                elif response.status_code == 429:
+                    return False, "Rate limited or quota exceeded"
+                elif response.status_code != 200:
+                    return False, f"API error: {response.status_code}"
+
+                # Second check: small completion to verify credits
+                # Using gpt-4o-mini which is very cheap
+                response = await client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json={
+                        "model": "gpt-4o-mini",
+                        "messages": [{"role": "user", "content": "Hi"}],
+                        "max_tokens": 1,
+                    },
+                )
+
+                if response.status_code == 200:
+                    return True, "Connected (credits OK)"
+                elif response.status_code == 429:
+                    error_data = response.json()
+                    error_msg = error_data.get("error", {}).get("message", "Rate limited")
+                    if "quota" in error_msg.lower() or "exceeded" in error_msg.lower():
+                        return False, "No credits remaining"
+                    return False, f"Rate limited: {error_msg}"
+                elif response.status_code == 402:
+                    return False, "No credits remaining (payment required)"
+                else:
+                    return False, f"Credit check failed: {response.status_code}"
+
+        except httpx.TimeoutException:
+            return False, "Connection timeout"
+        except Exception as e:
+            return False, f"Connection error: {e}"
 
     async def preload_libraries(self, matcher: MediaMatcher) -> dict[str, int]:
         """

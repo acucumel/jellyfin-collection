@@ -97,6 +97,9 @@ class Runner:
             self.poster_generator = PosterGenerator(
                 api_key=settings.openai.api_key,
                 output_dir=settings.get_posters_path(),
+                cache_dir=settings.get_cache_path(),
+                poster_history_limit=settings.openai.poster_history_limit,
+                prompt_history_limit=settings.openai.prompt_history_limit,
             )
             logger.info("AI poster generation enabled")
 
@@ -114,7 +117,7 @@ class Runner:
         # Initialize report generator
         self.report_generator = ReportGenerator(
             console=Console(force_terminal=True),
-            output_dir=settings.config_path / "reports",
+            output_dir=settings.get_reports_path(),
         )
 
         # Initialize startup service
@@ -237,7 +240,7 @@ class Runner:
                     )
 
                     # Sync to Jellyfin
-                    added, removed = await self.builder.sync_collection(
+                    added, removed, poster_path = await self.builder.sync_collection(
                         collection=collection,
                         report=col_report,
                         media_type=media_type,
@@ -248,24 +251,28 @@ class Runner:
                     col_report.success = True
                     library_report.collections.append(col_report)
 
-                    # Send changes notification (with all details)
-                    has_changes = added > 0 or removed > 0
-                    has_arr = col_report.items_sent_to_radarr > 0 or col_report.items_sent_to_sonarr > 0
-
-                    if has_changes or has_arr:
-                        await self.discord.send_collection_changes(
-                            collection_name=config.name,
-                            library=library_name,
-                            added=col_report.added_titles,
-                            removed=col_report.removed_titles,
-                            items_fetched=col_report.items_fetched,
-                            items_matched=col_report.items_matched,
-                            items_missing=col_report.items_missing,
-                            match_rate=col_report.match_rate,
-                            source_provider=col_report.source_provider,
-                            radarr_titles=col_report.radarr_titles,
-                            sonarr_titles=col_report.sonarr_titles,
-                        )
+                    # Send rich collection report with poster
+                    await self.discord.send_collection_report(
+                        collection_name=config.name,
+                        library=library_name,
+                        source_provider=col_report.source_provider,
+                        items_fetched=col_report.items_fetched,
+                        items_after_filters=col_report.items_after_filter,
+                        items_matched=col_report.items_matched,
+                        items_missing=col_report.items_missing,
+                        match_rate=col_report.match_rate,
+                        items_added=added,
+                        items_removed=removed,
+                        radarr_requests=col_report.items_sent_to_radarr,
+                        sonarr_requests=col_report.items_sent_to_sonarr,
+                        matched_titles=col_report.matched_titles,
+                        added_titles=col_report.added_titles,
+                        missing_titles=col_report.missing_titles,
+                        radarr_titles=col_report.radarr_titles,
+                        sonarr_titles=col_report.sonarr_titles,
+                        poster_path=poster_path,
+                        success=True,
+                    )
 
                 except Exception as e:
                     logger.error(f"Error processing collection '{config.name}': {e}")

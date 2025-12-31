@@ -53,7 +53,7 @@ def run(
         settings.config_path = config_path
 
     # Setup logging with file output
-    log_dir = settings.config_path / "logs"
+    log_dir = settings.get_log_path()
     setup_logging(level=settings.log_level, log_dir=log_dir)
 
     from jfc.services.runner import Runner
@@ -80,36 +80,103 @@ def run(
 
 @app.command()
 def schedule(
-    cron: Optional[str] = typer.Option(
-        None, "--cron", help="Cron expression (e.g., '0 3 * * *')"
+    collections_cron: Optional[str] = typer.Option(
+        None, "--collections-cron", help="Cron for collection sync (default: daily 3am)"
+    ),
+    posters_cron: Optional[str] = typer.Option(
+        None, "--posters-cron", help="Cron for poster regeneration (default: 1st of month, empty=disabled)"
+    ),
+    no_run_on_start: bool = typer.Option(
+        False, "--no-run-on-start", help="Skip initial run on startup"
     ),
 ) -> None:
-    """Run with scheduler for periodic updates."""
+    """Run with scheduler for periodic updates (daemon mode)."""
     settings = get_settings()
-    log_dir = settings.config_path / "logs"
+    log_dir = settings.get_log_path()
     setup_logging(level=settings.log_level, log_dir=log_dir)
 
-    cron_expr = cron or settings.scheduler.cron
-
+    from loguru import logger
     from jfc.services.runner import Runner
+
+    # Get cron expressions from args or settings
+    col_cron = collections_cron or settings.scheduler.collections_cron
+    post_cron = posters_cron if posters_cron is not None else settings.scheduler.posters_cron
+    run_on_start = settings.scheduler.run_on_start and not no_run_on_start
 
     runner = Runner(settings)
     scheduler = Scheduler(timezone=settings.scheduler.timezone)
 
-    async def scheduled_run():
-        await runner.run(scheduled=True)
+    async def collections_sync():
+        """Daily collection sync (no poster regeneration)."""
+        logger.info("Starting scheduled collection sync...")
+        try:
+            await runner.run(scheduled=True, force_posters=False)
+        except Exception as e:
+            logger.error(f"Scheduled collection sync failed: {e}")
 
-    scheduler.add_cron_job(
-        name="collection_update",
-        func=scheduled_run,
-        cron_expression=cron_expr,
-    )
+    async def posters_regeneration():
+        """Monthly poster regeneration."""
+        logger.info("Starting scheduled poster regeneration...")
+        try:
+            await runner.run(scheduled=True, force_posters=True)
+        except Exception as e:
+            logger.error(f"Scheduled poster regeneration failed: {e}")
 
-    console.print(f"[green]Scheduler started[/green] with cron: {cron_expr}")
-    console.print("Press Ctrl+C to stop")
+    async def _run_scheduler():
+        """Main async scheduler loop."""
+        # Schedule collection sync job
+        scheduler.add_cron_job(
+            name="collection_sync",
+            func=collections_sync,
+            cron_expression=col_cron,
+        )
+        console.print(f"[green]✓[/green] Collection sync scheduled: [cyan]{col_cron}[/cyan]")
+
+        # Schedule poster regeneration job (if enabled)
+        if post_cron and post_cron.strip():
+            scheduler.add_cron_job(
+                name="poster_regeneration",
+                func=posters_regeneration,
+                cron_expression=post_cron,
+            )
+            console.print(f"[green]✓[/green] Poster regeneration scheduled: [cyan]{post_cron}[/cyan]")
+        else:
+            console.print("[yellow]![/yellow] Poster regeneration disabled (no cron set)")
+
+        console.print(f"[dim]Timezone: {settings.scheduler.timezone}[/dim]")
+        console.print()
+
+        # Run immediately on startup if configured
+        if run_on_start:
+            console.print("[cyan]Running initial collection sync...[/cyan]")
+            try:
+                await collections_sync()
+            except Exception as e:
+                console.print(f"[red]Initial sync failed:[/red] {e}")
+
+        console.print("\n[green]Scheduler running.[/green] Press Ctrl+C to stop")
+
+        # List next run times
+        jobs = scheduler.list_jobs()
+        if jobs:
+            console.print("\n[dim]Next runs:[/dim]")
+            for job in jobs:
+                next_run = job.get("next_run", "N/A")
+                if next_run and next_run != "N/A":
+                    from datetime import datetime
+                    dt = datetime.fromisoformat(next_run.replace("Z", "+00:00"))
+                    next_run = dt.strftime("%Y-%m-%d %H:%M")
+                console.print(f"  [dim]- {job['name']}: {next_run}[/dim]")
+
+        # Keep running until interrupted
+        try:
+            while True:
+                await asyncio.sleep(3600)  # Sleep 1 hour
+        except asyncio.CancelledError:
+            pass
 
     try:
-        asyncio.get_event_loop().run_forever()
+        asyncio.run(_run_scheduler())
     except KeyboardInterrupt:
         scheduler.stop()
         asyncio.run(runner.close())
@@ -283,6 +350,42 @@ def test_connections() -> None:
             except Exception as e:
                 results.append(("Sonarr", "FAIL", str(e)))
 
+        # Test OpenAI (if enabled)
+        if settings.openai.enabled and settings.openai.api_key:
+            import httpx
+
+            try:
+                async with httpx.AsyncClient(timeout=10.0) as http_client:
+                    # Check API key
+                    response = await http_client.get(
+                        "https://api.openai.com/v1/models",
+                        headers={"Authorization": f"Bearer {settings.openai.api_key}"},
+                    )
+                    if response.status_code != 200:
+                        results.append(("OpenAI", "FAIL", f"API error: {response.status_code}"))
+                    else:
+                        # Check credits with mini completion
+                        response = await http_client.post(
+                            "https://api.openai.com/v1/chat/completions",
+                            headers={
+                                "Authorization": f"Bearer {settings.openai.api_key}",
+                                "Content-Type": "application/json",
+                            },
+                            json={
+                                "model": "gpt-4o-mini",
+                                "messages": [{"role": "user", "content": "Hi"}],
+                                "max_tokens": 1,
+                            },
+                        )
+                        if response.status_code == 200:
+                            results.append(("OpenAI", "OK", "Credits OK"))
+                        elif response.status_code in (429, 402):
+                            results.append(("OpenAI", "FAIL", "No credits"))
+                        else:
+                            results.append(("OpenAI", "FAIL", f"Error: {response.status_code}"))
+            except Exception as e:
+                results.append(("OpenAI", "FAIL", str(e)))
+
         # Display results
         table = Table(title="Connection Tests")
         table.add_column("Service", style="cyan")
@@ -303,6 +406,9 @@ def generate_poster(
     collection_name: str = typer.Argument(..., help="Collection name (e.g., 'Tendances')"),
     category: str = typer.Option(
         "FILMS", "--category", "-c", help="Category: FILMS, SÉRIES, or CARTOONS"
+    ),
+    library: str = typer.Option(
+        "Films", "--library", "-l", help="Library name for folder organization"
     ),
     output_dir: Optional[Path] = typer.Option(
         None, "--output", "-o", help="Output directory for generated posters"
@@ -336,11 +442,18 @@ def generate_poster(
         from jfc.services.poster_generator import PosterGenerator
 
         out_path = output_dir or settings.get_posters_path()
-        generator = PosterGenerator(settings.openai.api_key, out_path)
+        generator = PosterGenerator(
+            api_key=settings.openai.api_key,
+            output_dir=out_path,
+            cache_dir=settings.get_cache_path(),
+            poster_history_limit=settings.openai.poster_history_limit,
+            prompt_history_limit=settings.openai.prompt_history_limit,
+        )
 
         console.print(f"[cyan]Generating poster for:[/cyan] {collection_name}")
         console.print(f"[cyan]Category:[/cyan] {category.upper()}")
-        console.print(f"[cyan]Output:[/cyan] {out_path}")
+        console.print(f"[cyan]Library:[/cyan] {library}")
+        console.print(f"[cyan]Output:[/cyan] {out_path}/{library}/{collection_name}/")
         console.print()
 
         from jfc.models.collection import CollectionConfig
@@ -354,6 +467,7 @@ def generate_poster(
             config=config,
             items=[],
             category=category.upper(),
+            library=library,
             force_regenerate=force,
         )
 

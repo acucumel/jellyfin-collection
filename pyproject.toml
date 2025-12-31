@@ -1,6 +1,6 @@
 [project]
 name = "jellyfin-collection"
-version = "0.1.0"
+version = "1.0.0"
 description = "Kometa-compatible collection manager for Jellyfin with Sonarr/Radarr integration"
 readme = "README.md"
 requires-python = ">=3.11"

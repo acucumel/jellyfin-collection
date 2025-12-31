@@ -20,7 +20,7 @@ from jfc.models.media import MediaItem
 # CONSTANTS
 # =============================================================================
 
-MODEL_GPT_5_1 = "gpt-5.1"
+MODEL_GPT_5_1 = "gpt-5.1"  # For scene descriptions and visual signatures
 MODEL_GPT_IMAGE_1_5 = "gpt-image-1.5"
 MODEL_DALL_E_3 = "dall-e-3"
 
@@ -345,35 +345,45 @@ COLLECTION_THEMES = {
 class PosterGenerator:
     """Generate collection posters using OpenAI gpt-image-1.5 and GPT-5.1."""
 
-    def __init__(self, api_key: str, output_dir: Path, run_id: Optional[str] = None):
+    def __init__(
+        self,
+        api_key: str,
+        output_dir: Path,
+        cache_dir: Optional[Path] = None,
+        poster_history_limit: int = 5,
+        prompt_history_limit: int = 10,
+    ):
         """
         Initialize poster generator.
 
         Args:
             api_key: OpenAI API key
-            output_dir: Directory to save generated posters
-            run_id: Optional run identifier for history grouping (defaults to timestamp)
+            output_dir: Directory to save generated posters (data/posters)
+            cache_dir: Directory for cache files (data/cache)
+            poster_history_limit: Number of old posters to keep (0=unlimited)
+            prompt_history_limit: Number of prompt JSON files to keep (0=unlimited)
         """
         self.client = AsyncOpenAI(api_key=api_key, timeout=API_TIMEOUT)
         self.output_dir = output_dir
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create run history directory with timestamp
-        self.run_id = run_id or datetime.now().strftime("%Y-%m-%d_%H%M%S")
-        self.history_dir = output_dir / "history" / self.run_id
-        self.history_dir.mkdir(parents=True, exist_ok=True)
+        # Retention limits
+        self.poster_history_limit = poster_history_limit
+        self.prompt_history_limit = prompt_history_limit
 
-        # Create prompts directory for debugging/history
-        self.prompts_dir = output_dir / "prompts"
-        self.prompts_dir.mkdir(parents=True, exist_ok=True)
+        # Cache directory (separate from output)
+        self.cache_dir = cache_dir or output_dir
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         # Load cached visual signatures
-        self.signatures_cache_path = output_dir / "visual_signatures_cache.json"
+        self.signatures_cache_path = self.cache_dir / "visual_signatures_cache.json"
         self.signatures_cache = self._load_signatures_cache()
 
         logger.info(f"PosterGenerator initialized (output: {output_dir})")
-        logger.info(f"History folder: history/{self.run_id}/")
+        logger.info(f"Retention: {poster_history_limit} posters, {prompt_history_limit} prompts")
         logger.debug(f"Loaded {len(self.signatures_cache)} cached visual signatures")
+        if self.signatures_cache:
+            logger.debug(f"Cache keys sample: {list(self.signatures_cache.keys())[:5]}")
 
     def _load_signatures_cache(self) -> dict[str, str]:
         """Load cached visual signatures from JSON file."""
@@ -394,13 +404,60 @@ class PosterGenerator:
         except Exception as e:
             logger.warning(f"Failed to save signatures cache: {e}")
 
+    def _get_collection_dir(self, library: str, collection: str) -> Path:
+        """
+        Get/create directory for a collection's posters.
+
+        Structure: {output_dir}/{library}/{collection}/
+            - poster.png (current poster)
+            - history/ (timestamped old posters)
+            - prompts/ (timestamped JSON files)
+        """
+        safe_lib = self._safe_filename(library)
+        safe_col = self._safe_filename(collection)
+        col_dir = self.output_dir / safe_lib / safe_col
+        col_dir.mkdir(parents=True, exist_ok=True)
+        (col_dir / "history").mkdir(exist_ok=True)
+        (col_dir / "prompts").mkdir(exist_ok=True)
+        return col_dir
+
+    def _cleanup_history(self, col_dir: Path) -> None:
+        """
+        Apply retention limits to history and prompts.
+
+        Keeps only the N most recent files based on configured limits.
+        """
+        # Cleanup poster history
+        if self.poster_history_limit > 0:
+            history_dir = col_dir / "history"
+            files = sorted(history_dir.glob("*.png"))
+            for f in files[:-self.poster_history_limit]:
+                try:
+                    f.unlink()
+                    logger.debug(f"Deleted old poster: {f.name}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete {f}: {e}")
+
+        # Cleanup prompt history
+        if self.prompt_history_limit > 0:
+            prompts_dir = col_dir / "prompts"
+            files = sorted(prompts_dir.glob("*.json"))
+            for f in files[:-self.prompt_history_limit]:
+                try:
+                    f.unlink()
+                    logger.debug(f"Deleted old prompt: {f.name}")
+                except Exception as e:
+                    logger.warning(f"Failed to delete {f}: {e}")
+
     async def generate_poster(
         self,
         config: CollectionConfig,
         items: list[MediaItem],
         category: str,  # "FILMS", "SÉRIES", or "CARTOONS"
+        library: str = "default",
         force_regenerate: bool = False,
         use_dalle3: bool = False,
+        explicit_refs: bool = False,
     ) -> Optional[Path]:
         """
         Generate a poster for a collection.
@@ -409,27 +466,32 @@ class PosterGenerator:
             config: Collection configuration
             items: Items in the collection (for context)
             category: Category type (FILMS, SÉRIES, CARTOONS)
+            library: Library name for folder organization
             force_regenerate: Regenerate even if poster exists
             use_dalle3: Use DALL-E 3 instead of gpt-image-1.5
+            explicit_refs: Include show titles in visual signatures
 
         Returns:
             Path to generated poster, or None if failed
         """
-        # Determine output filename
-        safe_name = self._safe_filename(config.name)
-        output_path = self.output_dir / f"{safe_name}.png"
+        # Get collection directory (creates structure if needed)
+        col_dir = self._get_collection_dir(library, config.name)
+        output_path = col_dir / "poster.png"
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
 
         # Skip if exists and not forcing
         if output_path.exists() and not force_regenerate:
             logger.debug(f"Poster already exists: {output_path}")
             return output_path
 
-        logger.info(f"Generating poster for '{config.name}'...")
+        logger.info(f"Generating poster for '{config.name}' in '{library}'...")
         start_time = time.perf_counter()
 
         try:
             # Step 1: Extract visual signatures (DB -> cache -> generate from metadata)
-            visual_signatures = await self._extract_visual_signatures(items[:5])
+            visual_signatures = await self._extract_visual_signatures(
+                items[:5], explicit_refs=explicit_refs
+            )
             logger.debug(f"Visual signatures: {visual_signatures[:100]}...")
 
             # Step 2: Generate scene description using GPT-5.1
@@ -443,17 +505,12 @@ class PosterGenerator:
             full_prompt = self._build_prompt(config, category, scene_description)
             logger.debug(f"Full prompt length: {len(full_prompt)} chars")
 
-            # Step 4: Save prompts for debugging/history
-            self._save_prompts(
-                safe_name=safe_name,
-                config=config,
-                category=category,
-                items=items,
-                visual_signatures=visual_signatures,
-                scene_prompt=scene_prompt,
-                scene_description=scene_description,
-                image_prompt=full_prompt,
-            )
+            # Step 4: Move existing poster to history (if exists)
+            if output_path.exists():
+                history_poster = col_dir / "history" / f"{timestamp}.png"
+                import shutil
+                shutil.move(str(output_path), str(history_poster))
+                logger.debug(f"Moved old poster to history: {timestamp}.png")
 
             # Step 5: Generate image
             image_path = await self._generate_image(full_prompt, output_path, use_dalle3)
@@ -461,20 +518,25 @@ class PosterGenerator:
             elapsed = time.perf_counter() - start_time
 
             if image_path:
-                # Step 6: Save to history folder (poster + prompt together)
-                self._save_to_history(
-                    safe_name=safe_name,
-                    poster_path=image_path,
+                # Step 6: Save prompt to collection's prompts folder
+                self._save_prompt_to_collection(
+                    col_dir=col_dir,
+                    timestamp=timestamp,
                     config=config,
                     category=category,
+                    library=library,
                     items=items,
                     visual_signatures=visual_signatures,
+                    scene_prompt=scene_prompt,
                     scene_description=scene_description,
                     image_prompt=full_prompt,
                 )
 
+                # Step 7: Apply retention limits
+                self._cleanup_history(col_dir)
+
                 logger.success(
-                    f"Generated poster: {image_path.name} ({elapsed:.1f}s)"
+                    f"Generated poster: {library}/{config.name}/poster.png ({elapsed:.1f}s)"
                 )
                 return image_path
 
@@ -523,7 +585,9 @@ IMPORTANT FOR CARTOONS:
 
         return base_prompt + extra_rules
 
-    async def _extract_visual_signatures(self, items: list[MediaItem]) -> str:
+    async def _extract_visual_signatures(
+        self, items: list[MediaItem], explicit_refs: bool = False
+    ) -> str:
         """
         Extract visual signatures from media items.
 
@@ -531,11 +595,16 @@ IMPORTANT FOR CARTOONS:
         1. Local database (known franchises)
         2. Cached signatures (previously generated)
         3. Generate from metadata using GPT (then cache)
+
+        Args:
+            items: List of media items to extract signatures from
+            explicit_refs: Include show titles for better context
         """
         if not items:
             return "Dynamic action scenes with dramatic lighting"
 
-        signatures = []
+        # Collect signatures with their source titles
+        signature_data: list[tuple[str, str]] = []  # (title, signature)
         items_needing_generation = []
 
         for item in items[:5]:
@@ -550,12 +619,13 @@ IMPORTANT FOR CARTOONS:
                     break
 
             # 2. Check cache
+            logger.debug(f"[Cache lookup] title='{item.title}', in_cache={item.title in self.signatures_cache}")
             if not signature and item.title in self.signatures_cache:
                 signature = self.signatures_cache[item.title]
                 logger.debug(f"[Cache] Found signature for '{item.title}'")
 
             if signature:
-                signatures.append(signature)
+                signature_data.append((item.title, signature))
             else:
                 # Need to generate from metadata
                 items_needing_generation.append(item)
@@ -565,13 +635,23 @@ IMPORTANT FOR CARTOONS:
             new_signatures = await self._generate_signatures_from_metadata(
                 items_needing_generation
             )
-            signatures.extend(new_signatures)
+            for item, sig in zip(items_needing_generation, new_signatures):
+                signature_data.append((item.title, sig))
 
-        if signatures:
-            # Return top 3 unique signatures
-            result = "\n".join(f"- {sig}" for sig in signatures[:3])
-            logger.debug(f"Total {len(signatures)} visual signatures")
-            return result
+        if signature_data:
+            logger.debug(f"Total {len(signature_data)} visual signatures")
+
+            # Format based on explicit_refs setting
+            if explicit_refs:
+                # Structured format with show titles
+                lines = []
+                for i, (title, sig) in enumerate(signature_data[:3], 1):
+                    lines.append(f'{i}. FROM "{title}":')
+                    lines.append(f"   {sig}")
+                return "\n".join(lines)
+            else:
+                # Original format (anonymous)
+                return "\n".join(f"- {sig}" for _, sig in signature_data[:3])
 
         # Fallback
         logger.debug("No visual signatures found, using default")
@@ -641,33 +721,37 @@ IMPORTANT FOR CARTOONS:
         logger.debug("Calling GPT-5.1 for scene description...")
         start_time = time.perf_counter()
 
+        # CRITICAL: reasoning_effort MUST be "low" - "medium" causes GPT-5.1 to return empty content
         response = await self.client.chat.completions.create(
             model=MODEL_GPT_5_1,
             messages=[{"role": "user", "content": prompt}],
             max_completion_tokens=500,
-            reasoning_effort="medium",  # Better for creative tasks
+            reasoning_effort="low",
         )
 
         elapsed = time.perf_counter() - start_time
         logger.debug(f"GPT-5.1 response in {elapsed:.1f}s")
 
-        # Log full response for debugging
-        content = response.choices[0].message.content
-        refusal = response.choices[0].message.refusal
+        message = response.choices[0].message
+        content = message.content
+        refusal = getattr(message, "refusal", None)
+
         if refusal:
             logger.warning(f"GPT-5.1 refusal: {refusal}")
         if not content:
             logger.warning("GPT-5.1 returned empty content - using fallback")
-            # Fallback: generic scene based on collection type
             return "A dramatic cinematic scene with silhouetted figures walking toward a glowing horizon, mixing fantasy and sci-fi elements in a visually striking composition."
 
+        logger.debug(f"GPT-5.1 scene: {content[:80]}...")
         return content.strip()
 
-    def _save_prompts(
+    def _save_prompt_to_collection(
         self,
-        safe_name: str,
+        col_dir: Path,
+        timestamp: str,
         config: CollectionConfig,
         category: str,
+        library: str,
         items: list[MediaItem],
         visual_signatures: str,
         scene_prompt: str,
@@ -675,29 +759,34 @@ IMPORTANT FOR CARTOONS:
         image_prompt: str,
     ) -> None:
         """
-        Save prompts to JSON file for debugging and history.
+        Save prompt data to the collection's prompts folder.
 
         Args:
-            safe_name: Safe filename for the collection
+            col_dir: Collection directory path
+            timestamp: Timestamp for the filename
             config: Collection configuration
             category: Category type
+            library: Library name
             items: Media items used for context
             visual_signatures: Visual signatures extracted from titles
             scene_prompt: Prompt sent to GPT-5.1
             scene_description: Response from GPT-5.1
             image_prompt: Final prompt sent to gpt-image-1.5
         """
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        prompt_file = self.prompts_dir / f"{safe_name}_{timestamp}.json"
+        prompt_file = col_dir / "prompts" / f"{timestamp}.json"
 
         prompt_data = {
             "timestamp": datetime.now().isoformat(),
+            "library": library,
             "collection": {
                 "name": config.name,
                 "summary": config.summary,
             },
             "category": category,
-            "items_context": [item.title for item in items[:10]],
+            "items_context": [
+                {"title": item.title, "year": item.year}
+                for item in items[:10]
+            ],
             "prompts": {
                 "visual_signatures": visual_signatures,
                 "scene_prompt": scene_prompt,
@@ -713,69 +802,9 @@ IMPORTANT FOR CARTOONS:
         try:
             with open(prompt_file, "w", encoding="utf-8") as f:
                 json.dump(prompt_data, f, indent=2, ensure_ascii=False)
-            logger.debug(f"Prompts saved to: {prompt_file.name}")
+            logger.debug(f"Prompt saved to: {col_dir.name}/prompts/{timestamp}.json")
         except Exception as e:
-            logger.warning(f"Failed to save prompts: {e}")
-
-    def _save_to_history(
-        self,
-        safe_name: str,
-        poster_path: Path,
-        config: CollectionConfig,
-        category: str,
-        items: list[MediaItem],
-        visual_signatures: str,
-        scene_description: str,
-        image_prompt: str,
-    ) -> None:
-        """
-        Save poster and metadata to history folder.
-
-        Creates a copy of the poster and a JSON file with all generation details
-        in the run's history folder for archival purposes.
-        """
-        import shutil
-
-        try:
-            # Copy poster to history folder
-            history_poster = self.history_dir / f"{safe_name}.png"
-            shutil.copy2(poster_path, history_poster)
-
-            # Save metadata JSON alongside the poster
-            history_json = self.history_dir / f"{safe_name}.json"
-            history_data = {
-                "timestamp": datetime.now().isoformat(),
-                "run_id": self.run_id,
-                "collection": {
-                    "name": config.name,
-                    "summary": config.summary,
-                },
-                "category": category,
-                "items_context": [
-                    {"title": item.title, "year": item.year}
-                    for item in items[:10]
-                ],
-                "generation": {
-                    "visual_signatures": visual_signatures,
-                    "scene_description": scene_description,
-                    "image_prompt": image_prompt,
-                },
-                "models": {
-                    "scene_model": MODEL_GPT_5_1,
-                    "image_model": MODEL_GPT_IMAGE_1_5,
-                },
-                "files": {
-                    "poster": history_poster.name,
-                },
-            }
-
-            with open(history_json, "w", encoding="utf-8") as f:
-                json.dump(history_data, f, indent=2, ensure_ascii=False)
-
-            logger.debug(f"History saved: {self.run_id}/{safe_name}.png + .json")
-
-        except Exception as e:
-            logger.warning(f"Failed to save to history: {e}")
+            logger.warning(f"Failed to save prompt: {e}")
 
     def _build_prompt(
         self,
@@ -897,6 +926,7 @@ async def generate_test_poster(
     category: str,
     api_key: str,
     output_dir: Path,
+    library: str = "test",
 ) -> Optional[Path]:
     """
     Generate a test poster for quick validation.
@@ -906,6 +936,7 @@ async def generate_test_poster(
         category: Category (FILMS, SÉRIES, CARTOONS)
         api_key: OpenAI API key
         output_dir: Output directory
+        library: Library name for folder organization
 
     Returns:
         Path to generated poster
@@ -922,5 +953,6 @@ async def generate_test_poster(
         config=config,
         items=[],  # No items for test
         category=category,
+        library=library,
         force_regenerate=True,
     )

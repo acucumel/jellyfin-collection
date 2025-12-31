@@ -147,3 +147,33 @@ To migrate existing Kometa configs:
 3. Use loguru for logging
 4. Write tests for new features
 5. Update TODO.md when completing items
+# TODO - Futures améliorations
+
+## JustWatch Integration (à traiter plus tard)
+
+**Objectif** : Récupérer les charts de streaming depuis JustWatch
+
+**API** :
+- Endpoint : `https://apis.justwatch.com/graphql`
+- Query : `GetPopularTitles`
+- Paramètres : country, objectTypes (SHOW/MOVIE), packages, limit
+
+**Ressources** :
+- https://apis.justwatch.com/docs/api/
+- https://github.com/YLTsai0609/DataEngineering101/blob/main/graphql.md
+- https://pypi.org/project/simple-justwatch-python-api/
+
+**Usage envisagé** :
+```yaml
+justwatch_popular:
+  content_type: shows
+  country: FR
+  limit: 50
+```
+
+**Notes** :
+- API non-officielle, peut changer
+- Nécessite mapping IDs JustWatch → TMDb
+- Données basées sur activité utilisateur réelle
+
+---
