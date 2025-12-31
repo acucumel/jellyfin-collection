@@ -12,7 +12,7 @@ from jfc.clients.radarr import RadarrClient
 from jfc.clients.sonarr import SonarrClient
 from jfc.clients.tmdb import TMDbClient
 from jfc.clients.trakt import TraktClient
-from jfc.core.config import get_settings
+from jfc.core.config import Settings, get_settings
 from jfc.models.collection import (
     Collection,
     CollectionConfig,
@@ -23,6 +23,7 @@ from jfc.models.collection import (
 from jfc.models.media import MediaItem, MediaType, Movie, Series
 from jfc.models.report import CollectionReport
 from jfc.services.media_matcher import MediaMatcher
+from jfc.services.poster_generator import PosterGenerator
 
 
 class CollectionBuilder:
@@ -35,6 +36,7 @@ class CollectionBuilder:
         trakt: Optional[TraktClient] = None,
         radarr: Optional[RadarrClient] = None,
         sonarr: Optional[SonarrClient] = None,
+        poster_generator: Optional[PosterGenerator] = None,
         dry_run: bool = False,
     ):
         """
@@ -46,6 +48,7 @@ class CollectionBuilder:
             trakt: Optional Trakt API client
             radarr: Optional Radarr client for adding missing movies
             sonarr: Optional Sonarr client for adding missing series
+            poster_generator: Optional AI poster generator
             dry_run: If True, don't make any changes
         """
         self.jellyfin = jellyfin
@@ -53,6 +56,7 @@ class CollectionBuilder:
         self.trakt = trakt
         self.radarr = radarr
         self.sonarr = sonarr
+        self.poster_generator = poster_generator
         self.dry_run = dry_run
 
         self.matcher = MediaMatcher(jellyfin)
@@ -111,6 +115,9 @@ class CollectionBuilder:
                 media_type=item.media_type.value,  # "movie" or "series"
                 matched=lib_item is not None,
                 in_library=lib_item is not None,
+                # Preserve metadata for AI poster generation
+                overview=item.overview,
+                genres=item.genres if item.genres else None,
             )
             collection_items.append(collection_item)
 
@@ -164,6 +171,7 @@ class CollectionBuilder:
         self,
         collection: Collection,
         report: CollectionReport,
+        media_type: MediaType = MediaType.MOVIE,
         add_missing_to_arr: bool = True,
     ) -> tuple[int, int]:
         """
@@ -172,6 +180,7 @@ class CollectionBuilder:
         Args:
             collection: Collection to sync
             report: Collection report to update with sync info
+            media_type: Type of media (for poster category)
             add_missing_to_arr: Whether to add missing items to Radarr/Sonarr
 
         Returns:
@@ -265,9 +274,8 @@ class CollectionBuilder:
             display_order=display_order,
         )
 
-        # Upload poster if configured
-        if collection.config.poster:
-            await self._upload_poster(collection)
+        # Upload poster (manual or AI-generated)
+        await self._upload_poster(collection, media_type)
 
         # Add missing items to Radarr/Sonarr
         if add_missing_to_arr:
@@ -646,21 +654,54 @@ class CollectionBuilder:
         }
         return order_mapping.get(order, "Default")
 
-    async def _upload_poster(self, collection: Collection) -> bool:
+    async def _upload_poster(
+        self,
+        collection: Collection,
+        media_type: MediaType,
+    ) -> bool:
         """
         Upload poster image for collection if configured.
 
+        If no poster is configured but AI generation is enabled,
+        generates a poster automatically using OpenAI.
+
         Args:
             collection: Collection with poster config
+            media_type: Type of media (for AI category mapping)
 
         Returns:
             True if poster was uploaded successfully
         """
-        if not collection.config.poster or not collection.jellyfin_id:
+        if not collection.jellyfin_id:
             return False
 
         settings = get_settings()
-        poster_path = settings.get_posters_path() / collection.config.poster
+        poster_path = None
+
+        # 1. Check for manually configured poster
+        if collection.config.poster:
+            poster_path = settings.get_posters_path() / collection.config.poster
+
+        # 2. If no manual poster and AI generation enabled, generate one
+        elif self.poster_generator and settings.openai.enabled:
+            # Map media type to category
+            category = self._get_poster_category(collection.library_name, media_type)
+
+            # Convert collection items back to MediaItems for context
+            media_items = self._collection_items_to_media_items(collection.items)
+
+            logger.info(f"Generating AI poster for '{collection.config.name}'...")
+            poster_path = await self.poster_generator.generate_poster(
+                config=collection.config,
+                items=media_items,
+                category=category,
+                force_regenerate=False,  # Don't regenerate if exists
+            )
+            if poster_path:
+                logger.success(f"Generated AI poster: {poster_path.name}")
+
+        if not poster_path or not poster_path.exists():
+            return False
 
         try:
             success = await self.jellyfin.upload_collection_poster(
@@ -668,19 +709,79 @@ class CollectionBuilder:
                 poster_path,
             )
             if success:
-                logger.success(f"✓ Uploaded poster for '{collection.config.name}'")
+                logger.success(f"Uploaded poster for '{collection.config.name}'")
             return success
         except FileNotFoundError:
             logger.warning(
-                f"⚠ Poster file not found for '{collection.config.name}': {poster_path}"
+                f"Poster file not found for '{collection.config.name}': {poster_path}"
             )
             return False
         except ValueError as e:
-            logger.warning(f"⚠ Invalid poster for '{collection.config.name}': {e}")
+            logger.warning(f"Invalid poster for '{collection.config.name}': {e}")
             return False
         except Exception as e:
-            logger.error(f"✗ Failed to upload poster for '{collection.config.name}': {e}")
+            logger.error(f"Failed to upload poster for '{collection.config.name}': {e}")
             return False
+
+    def _get_poster_category(self, library_name: str, media_type: MediaType) -> str:
+        """
+        Map library/media type to poster category.
+
+        Args:
+            library_name: Name of the Jellyfin library
+            media_type: Type of media
+
+        Returns:
+            Category string: FILMS, SÉRIES, or CARTOONS
+        """
+        lib_lower = library_name.lower()
+
+        # Check for cartoon/animation library
+        if any(x in lib_lower for x in ["cartoon", "animation", "anime", "enfant", "kids"]):
+            return "CARTOONS"
+
+        # Based on media type
+        if media_type == MediaType.SERIES:
+            return "SÉRIES"
+
+        return "FILMS"
+
+    def _collection_items_to_media_items(
+        self,
+        items: list[CollectionItem],
+    ) -> list[MediaItem]:
+        """
+        Convert CollectionItems back to MediaItems for poster generation context.
+
+        Includes title, year, overview, and genres for AI poster generation.
+
+        Args:
+            items: Collection items
+
+        Returns:
+            List of MediaItem objects
+        """
+        media_items = []
+        for item in items:
+            media_type = MediaType.SERIES if item.media_type == "series" else MediaType.MOVIE
+            if media_type == MediaType.MOVIE:
+                media_item = Movie(
+                    tmdb_id=item.tmdb_id,
+                    title=item.title,
+                    year=item.year,
+                    overview=item.overview,
+                    genres=item.genres,
+                )
+            else:
+                media_item = Series(
+                    tmdb_id=item.tmdb_id,
+                    title=item.title,
+                    year=item.year,
+                    overview=item.overview,
+                    genres=item.genres,
+                )
+            media_items.append(media_item)
+        return media_items
 
     async def _add_missing_to_arr(
         self,

@@ -22,6 +22,7 @@ from jfc.models.media import MediaType
 from jfc.models.report import CollectionReport, LibraryReport, RunReport
 from jfc.parsers.kometa import KometaParser
 from jfc.services.collection_builder import CollectionBuilder
+from jfc.services.poster_generator import PosterGenerator
 from jfc.services.report_generator import ReportGenerator
 from jfc.services.startup import StartupService
 
@@ -90,6 +91,15 @@ class Runner:
         # Initialize parser
         self.parser = KometaParser(settings.config_path)
 
+        # Initialize poster generator (if OpenAI configured)
+        self.poster_generator: Optional[PosterGenerator] = None
+        if settings.openai.api_key and settings.openai.enabled:
+            self.poster_generator = PosterGenerator(
+                api_key=settings.openai.api_key,
+                output_dir=settings.get_posters_path(),
+            )
+            logger.info("AI poster generation enabled")
+
         # Initialize builder
         self.builder = CollectionBuilder(
             jellyfin=self.jellyfin,
@@ -97,6 +107,7 @@ class Runner:
             trakt=self.trakt,
             radarr=self.radarr,
             sonarr=self.sonarr,
+            poster_generator=self.poster_generator,
             dry_run=self.dry_run,
         )
 
@@ -227,6 +238,7 @@ class Runner:
                     added, removed = await self.builder.sync_collection(
                         collection=collection,
                         report=col_report,
+                        media_type=media_type,
                         add_missing_to_arr=True,
                     )
 

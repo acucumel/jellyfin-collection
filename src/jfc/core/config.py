@@ -44,6 +44,13 @@ class MDBListSettings(BaseModel):
     api_key: Optional[str] = Field(default=None)
 
 
+class OpenAISettings(BaseModel):
+    """OpenAI API configuration for poster generation."""
+
+    api_key: Optional[str] = Field(default=None)
+    enabled: bool = Field(default=False)
+
+
 class RadarrSettings(BaseModel):
     """Radarr configuration."""
 
@@ -108,6 +115,10 @@ class Settings(BaseSettings):
 
     # MDBList
     mdblist_api_key: Optional[str] = Field(default=None)
+
+    # OpenAI (poster generation)
+    openai_api_key: Optional[str] = Field(default=None)
+    openai_enabled: bool = Field(default=False)
 
     # Radarr
     radarr_url: str = Field(default="http://localhost:7878")
@@ -196,6 +207,14 @@ class Settings(BaseSettings):
     def mdblist(self) -> MDBListSettings:
         """Get MDBList settings."""
         return MDBListSettings(api_key=self.mdblist_api_key)
+
+    @property
+    def openai(self) -> OpenAISettings:
+        """Get OpenAI settings."""
+        return OpenAISettings(
+            api_key=self.openai_api_key,
+            enabled=self.openai_enabled,
+        )
 
     @property
     def radarr(self) -> RadarrSettings:

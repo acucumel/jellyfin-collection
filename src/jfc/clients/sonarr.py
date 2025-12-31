@@ -43,6 +43,12 @@ class SonarrClient(BaseClient):
         self._root_folder_id: Optional[int] = None
         self._tag_id: Optional[int] = None
 
+        # Cached blocklist (TVDB IDs)
+        self._blocklist_tvdb_ids: Optional[set[int]] = None
+
+        # Cached exclusion list (TVDB IDs)
+        self._exclusion_tvdb_ids: Optional[set[int]] = None
+
     # =========================================================================
     # Configuration
     # =========================================================================
@@ -110,6 +116,121 @@ class SonarrClient(BaseClient):
 
         logger.info(f"Created Sonarr tag '{name}' with ID {tag_id}")
         return tag_id
+
+    # =========================================================================
+    # Blocklist
+    # =========================================================================
+
+    async def get_blocklist(self, page_size: int = 1000) -> list[dict[str, Any]]:
+        """
+        Get all blocklisted series.
+
+        Args:
+            page_size: Number of items per page
+
+        Returns:
+            List of blocklist entries
+        """
+        response = await self.get(
+            "/api/v3/blocklist",
+            params={"page": 1, "pageSize": page_size},
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data.get("records", [])
+
+    async def load_blocklist(self) -> set[int]:
+        """
+        Load blocklist TVDB IDs into cache.
+
+        Returns:
+            Set of blocked TVDB IDs
+        """
+        if self._blocklist_tvdb_ids is not None:
+            return self._blocklist_tvdb_ids
+
+        blocklist = await self.get_blocklist()
+        self._blocklist_tvdb_ids = set()
+
+        for entry in blocklist:
+            # Get series details to find TVDB ID
+            series_id = entry.get("seriesId")
+            if series_id:
+                # Fetch series to get TVDB ID
+                try:
+                    response = await self.get(f"/api/v3/series/{series_id}")
+                    if response.status_code == 200:
+                        series = response.json()
+                        tvdb_id = series.get("tvdbId")
+                        if tvdb_id:
+                            self._blocklist_tvdb_ids.add(tvdb_id)
+                except Exception:
+                    pass
+
+        logger.debug(f"Loaded {len(self._blocklist_tvdb_ids)} blocked series from Sonarr")
+        return self._blocklist_tvdb_ids
+
+    async def is_blocklisted(self, tvdb_id: int) -> bool:
+        """
+        Check if a series is in the blocklist.
+
+        Args:
+            tvdb_id: TVDB ID to check
+
+        Returns:
+            True if series is blocklisted
+        """
+        blocklist = await self.load_blocklist()
+        return tvdb_id in blocklist
+
+    # =========================================================================
+    # Exclusion List (Import List Exclusions)
+    # =========================================================================
+
+    async def get_exclusions(self) -> list[dict[str, Any]]:
+        """
+        Get all import list exclusions (series that should never be added).
+
+        Returns:
+            List of exclusion entries
+        """
+        response = await self.get("/api/v3/importlistexclusion")
+        response.raise_for_status()
+        return response.json()
+
+    async def load_exclusions(self) -> set[int]:
+        """
+        Load exclusion list TVDB IDs into cache.
+
+        Returns:
+            Set of excluded TVDB IDs
+        """
+        if self._exclusion_tvdb_ids is not None:
+            return self._exclusion_tvdb_ids
+
+        exclusions = await self.get_exclusions()
+        self._exclusion_tvdb_ids = set()
+
+        for entry in exclusions:
+            tvdb_id = entry.get("tvdbId")
+            if tvdb_id:
+                self._exclusion_tvdb_ids.add(tvdb_id)
+
+        logger.debug(f"Loaded {len(self._exclusion_tvdb_ids)} excluded series from Sonarr")
+        return self._exclusion_tvdb_ids
+
+    async def is_excluded(self, tvdb_id: int) -> bool:
+        """
+        Check if a series is in the exclusion list.
+
+        Args:
+            tvdb_id: TVDB ID to check
+
+        Returns:
+            True if series is excluded
+        """
+        exclusions = await self.load_exclusions()
+        return tvdb_id in exclusions
 
     # =========================================================================
     # Series
@@ -181,6 +302,16 @@ class SonarrClient(BaseClient):
         Returns:
             Added series data or None if failed
         """
+        # Check if excluded (user explicitly doesn't want this series)
+        if await self.is_excluded(tvdb_id):
+            logger.debug(f"Series {tvdb_id} is in exclusion list, skipping")
+            return None
+
+        # Check if blocklisted (previously failed downloads)
+        if await self.is_blocklisted(tvdb_id):
+            logger.debug(f"Series {tvdb_id} is blocklisted in Sonarr, skipping")
+            return None
+
         # Check if already exists
         if await self.series_exists(tvdb_id):
             logger.debug(f"Series {tvdb_id} already exists in Sonarr")

@@ -186,6 +186,55 @@ class StartupService:
 
         return stats
 
+    async def preload_blocklists(self) -> dict[str, dict[str, int]]:
+        """
+        Preload Radarr/Sonarr blocklists and exclusion lists into cache.
+
+        Returns:
+            Dictionary of service name -> {blocklist: count, exclusions: count}
+        """
+        stats = {}
+
+        # Radarr
+        if self.radarr:
+            stats["Radarr"] = {"blocklist": 0, "exclusions": 0}
+            try:
+                blocklist = await self.radarr.load_blocklist()
+                stats["Radarr"]["blocklist"] = len(blocklist)
+                if blocklist:
+                    logger.info(f"  ⛔ Radarr: {len(blocklist)} blocked movies")
+            except Exception as e:
+                logger.warning(f"  ✗ Radarr blocklist: {e}")
+
+            try:
+                exclusions = await self.radarr.load_exclusions()
+                stats["Radarr"]["exclusions"] = len(exclusions)
+                if exclusions:
+                    logger.info(f"  🚫 Radarr: {len(exclusions)} excluded movies")
+            except Exception as e:
+                logger.warning(f"  ✗ Radarr exclusions: {e}")
+
+        # Sonarr
+        if self.sonarr:
+            stats["Sonarr"] = {"blocklist": 0, "exclusions": 0}
+            try:
+                blocklist = await self.sonarr.load_blocklist()
+                stats["Sonarr"]["blocklist"] = len(blocklist)
+                if blocklist:
+                    logger.info(f"  ⛔ Sonarr: {len(blocklist)} blocked series")
+            except Exception as e:
+                logger.warning(f"  ✗ Sonarr blocklist: {e}")
+
+            try:
+                exclusions = await self.sonarr.load_exclusions()
+                stats["Sonarr"]["exclusions"] = len(exclusions)
+                if exclusions:
+                    logger.info(f"  🚫 Sonarr: {len(exclusions)} excluded series")
+            except Exception as e:
+                logger.warning(f"  ✗ Sonarr exclusions: {e}")
+
+        return stats
+
     async def run_startup(self, matcher: Optional[MediaMatcher] = None) -> bool:
         """
         Run full startup sequence.
@@ -211,6 +260,11 @@ class StartupService:
         # Preload libraries if matcher provided
         if matcher:
             await self.preload_libraries(matcher)
+
+        # Preload blocklists for Radarr/Sonarr
+        if self.radarr or self.sonarr:
+            logger.info("Preloading Radarr/Sonarr blocklists...")
+            await self.preload_blocklists()
 
         logger.info("=" * 60)
         logger.success("🚀 Startup complete - Ready to process collections")

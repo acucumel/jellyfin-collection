@@ -295,6 +295,74 @@ def test_connections() -> None:
 
 
 @app.command()
+def generate_poster(
+    collection_name: str = typer.Argument(..., help="Collection name (e.g., 'Tendances')"),
+    category: str = typer.Option(
+        "FILMS", "--category", "-c", help="Category: FILMS, SÉRIES, or CARTOONS"
+    ),
+    output_dir: Optional[Path] = typer.Option(
+        None, "--output", "-o", help="Output directory for generated posters"
+    ),
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Regenerate even if poster exists"
+    ),
+) -> None:
+    """Generate a poster for a collection using OpenAI gpt-image-1.5."""
+    settings = get_settings()
+    setup_logging(level=settings.log_level)
+
+    # Check OpenAI configuration
+    if not settings.openai.api_key:
+        console.print("[red]Error:[/red] OPENAI_API_KEY not configured")
+        console.print("Set OPENAI_API_KEY in your .env file")
+        raise typer.Exit(1)
+
+    if not settings.openai.enabled:
+        console.print("[yellow]Warning:[/yellow] OpenAI is disabled (OPENAI_ENABLED=false)")
+        console.print("Set OPENAI_ENABLED=true to enable poster generation")
+        raise typer.Exit(1)
+
+    # Validate category
+    valid_categories = ["FILMS", "SÉRIES", "CARTOONS"]
+    if category.upper() not in valid_categories:
+        console.print(f"[red]Error:[/red] Invalid category. Choose from: {', '.join(valid_categories)}")
+        raise typer.Exit(1)
+
+    async def _generate():
+        from jfc.services.poster_generator import PosterGenerator
+
+        out_path = output_dir or settings.get_posters_path()
+        generator = PosterGenerator(settings.openai.api_key, out_path)
+
+        console.print(f"[cyan]Generating poster for:[/cyan] {collection_name}")
+        console.print(f"[cyan]Category:[/cyan] {category.upper()}")
+        console.print(f"[cyan]Output:[/cyan] {out_path}")
+        console.print()
+
+        from jfc.models.collection import CollectionConfig
+
+        config = CollectionConfig(
+            name=collection_name,
+            summary=f"Collection {collection_name}",
+        )
+
+        result = await generator.generate_poster(
+            config=config,
+            items=[],
+            category=category.upper(),
+            force_regenerate=force,
+        )
+
+        if result:
+            console.print(f"\n[green]Poster generated:[/green] {result}")
+        else:
+            console.print("\n[red]Failed to generate poster[/red]")
+            raise typer.Exit(1)
+
+    asyncio.run(_generate())
+
+
+@app.command()
 def version() -> None:
     """Show version information."""
     from jfc import __version__
