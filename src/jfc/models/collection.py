@@ -151,6 +151,10 @@ class CollectionItem(BaseModel):
     critic_rating: Optional[float] = None
     sort_name: Optional[str] = None
 
+    # Metadata for AI poster generation
+    overview: Optional[str] = None
+    genres: Optional[list[int]] = None
+
 
 class CollectionConfig(BaseModel):
     """Configuration for a single collection (from Kometa YAML)."""

@@ -43,6 +43,12 @@ class RadarrClient(BaseClient):
         self._root_folder_id: Optional[int] = None
         self._tag_id: Optional[int] = None
 
+        # Cached blocklist (TMDb IDs)
+        self._blocklist_tmdb_ids: Optional[set[int]] = None
+
+        # Cached exclusion list (TMDb IDs)
+        self._exclusion_tmdb_ids: Optional[set[int]] = None
+
     # =========================================================================
     # Configuration
     # =========================================================================
@@ -112,6 +118,121 @@ class RadarrClient(BaseClient):
         return tag_id
 
     # =========================================================================
+    # Blocklist
+    # =========================================================================
+
+    async def get_blocklist(self, page_size: int = 1000) -> list[dict[str, Any]]:
+        """
+        Get all blocklisted movies.
+
+        Args:
+            page_size: Number of items per page
+
+        Returns:
+            List of blocklist entries
+        """
+        response = await self.get(
+            "/api/v3/blocklist",
+            params={"page": 1, "pageSize": page_size},
+        )
+        response.raise_for_status()
+        data = response.json()
+        return data.get("records", [])
+
+    async def load_blocklist(self) -> set[int]:
+        """
+        Load blocklist TMDb IDs into cache.
+
+        Returns:
+            Set of blocked TMDb IDs
+        """
+        if self._blocklist_tmdb_ids is not None:
+            return self._blocklist_tmdb_ids
+
+        blocklist = await self.get_blocklist()
+        self._blocklist_tmdb_ids = set()
+
+        for entry in blocklist:
+            # Get movie details to find TMDb ID
+            movie_id = entry.get("movieId")
+            if movie_id:
+                # Fetch movie to get TMDb ID
+                try:
+                    response = await self.get(f"/api/v3/movie/{movie_id}")
+                    if response.status_code == 200:
+                        movie = response.json()
+                        tmdb_id = movie.get("tmdbId")
+                        if tmdb_id:
+                            self._blocklist_tmdb_ids.add(tmdb_id)
+                except Exception:
+                    pass
+
+        logger.debug(f"Loaded {len(self._blocklist_tmdb_ids)} blocked movies from Radarr")
+        return self._blocklist_tmdb_ids
+
+    async def is_blocklisted(self, tmdb_id: int) -> bool:
+        """
+        Check if a movie is in the blocklist.
+
+        Args:
+            tmdb_id: TMDb ID to check
+
+        Returns:
+            True if movie is blocklisted
+        """
+        blocklist = await self.load_blocklist()
+        return tmdb_id in blocklist
+
+    # =========================================================================
+    # Exclusion List
+    # =========================================================================
+
+    async def get_exclusions(self) -> list[dict[str, Any]]:
+        """
+        Get all exclusions (movies that should never be added).
+
+        Returns:
+            List of exclusion entries
+        """
+        response = await self.get("/api/v3/exclusions")
+        response.raise_for_status()
+        return response.json()
+
+    async def load_exclusions(self) -> set[int]:
+        """
+        Load exclusion list TMDb IDs into cache.
+
+        Returns:
+            Set of excluded TMDb IDs
+        """
+        if self._exclusion_tmdb_ids is not None:
+            return self._exclusion_tmdb_ids
+
+        exclusions = await self.get_exclusions()
+        self._exclusion_tmdb_ids = set()
+
+        for entry in exclusions:
+            tmdb_id = entry.get("tmdbId")
+            if tmdb_id:
+                self._exclusion_tmdb_ids.add(tmdb_id)
+
+        logger.debug(f"Loaded {len(self._exclusion_tmdb_ids)} excluded movies from Radarr")
+        return self._exclusion_tmdb_ids
+
+    async def is_excluded(self, tmdb_id: int) -> bool:
+        """
+        Check if a movie is in the exclusion list.
+
+        Args:
+            tmdb_id: TMDb ID to check
+
+        Returns:
+            True if movie is excluded
+        """
+        exclusions = await self.load_exclusions()
+        return tmdb_id in exclusions
+
+    # =========================================================================
     # Movies
     # =========================================================================
 
@@ -172,6 +293,16 @@ class RadarrClient(BaseClient):
         Returns:
             Added movie data or None if failed
         """
+        # Check if excluded (user explicitly doesn't want this movie)
+        if await self.is_excluded(tmdb_id):
+            logger.debug(f"Movie {tmdb_id} is in exclusion list, skipping")
+            return None
+
+        # Check if blocklisted (previously failed downloads)
+        if await self.is_blocklisted(tmdb_id):
+            logger.debug(f"Movie {tmdb_id} is blocklisted in Radarr, skipping")
+            return None
+
         # Check if already exists
         if await self.movie_exists(tmdb_id):
             logger.debug(f"Movie {tmdb_id} already exists in Radarr")
