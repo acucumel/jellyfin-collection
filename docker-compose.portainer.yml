@@ -86,18 +86,15 @@ services:
       # APPLICATION
       # =========================================================================
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - CONFIG_PATH=/config
-      - DATA_PATH=/data
-      - LOG_PATH=/logs
       - DRY_RUN=${DRY_RUN:-false}
 
     volumes:
       # Configurations Kometa (YAML) - lecture seule
-      - ${CONFIG_PATH:-./config}:/config:ro
+      - ${JFC_CONFIG_DIR:-./config}:/config:ro
       # Données persistantes (cache, posters, reports)
-      - ${DATA_PATH:-./data}:/data
+      - ${JFC_DATA_DIR:-./data}:/data
       # Logs
-      - ${LOG_PATH:-./logs}:/logs
+      - ${JFC_LOGS_DIR:-./logs}:/logs
 
     # Réseau (adapter selon votre configuration)
     networks:
