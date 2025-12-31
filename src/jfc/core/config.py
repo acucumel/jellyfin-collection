@@ -49,6 +49,18 @@ class OpenAISettings(BaseModel):
 
     api_key: Optional[str] = Field(default=None)
     enabled: bool = Field(default=False)
+    explicit_refs: bool = Field(
+        default=False,
+        description="Include show titles in visual signatures for better context"
+    )
+    poster_history_limit: int = Field(
+        default=5,
+        description="Number of old posters to keep (0=unlimited)"
+    )
+    prompt_history_limit: int = Field(
+        default=10,
+        description="Number of prompt JSON files to keep (0=unlimited)"
+    )
 
 
 class RadarrSettings(BaseModel):
@@ -91,7 +103,13 @@ class DiscordSettings(BaseModel):
 class SchedulerSettings(BaseModel):
     """Scheduler configuration."""
 
-    cron: str = Field(default="0 3 * * *")
+    # Collections sync schedule (default: daily at 3am)
+    collections_cron: str = Field(default="0 3 * * *")
+    # Poster regeneration schedule (default: 1st of month at 4am, empty = disabled)
+    posters_cron: str = Field(default="0 4 1 * *")
+    # Run collections sync immediately on startup
+    run_on_start: bool = Field(default=True)
+    # Timezone for cron expressions
     timezone: str = Field(default="Europe/Paris")
 
 
@@ -119,6 +137,9 @@ class Settings(BaseSettings):
     # OpenAI (poster generation)
     openai_api_key: Optional[str] = Field(default=None)
     openai_enabled: bool = Field(default=False)
+    openai_explicit_refs: bool = Field(default=False)
+    openai_poster_history_limit: int = Field(default=5)
+    openai_prompt_history_limit: int = Field(default=10)
 
     # Radarr
     radarr_url: str = Field(default="http://localhost:7878")
@@ -142,13 +163,16 @@ class Settings(BaseSettings):
     discord_webhook_changes: Optional[str] = Field(default=None)
 
     # Scheduler
-    scheduler_cron: str = Field(default="0 3 * * *")
+    scheduler_collections_cron: str = Field(default="0 3 * * *")
+    scheduler_posters_cron: str = Field(default="0 4 1 * *")
+    scheduler_run_on_start: bool = Field(default=True)
     scheduler_timezone: str = Field(default="Europe/Paris")
 
     # Application settings
     log_level: str = Field(default="INFO")
     config_path: Path = Field(default=Path("/config"))
-    posters_path: Optional[Path] = Field(default=None)  # Default: config_path/posters
+    data_path: Path = Field(default=Path("/data"))
+    log_path: Path = Field(default=Path("/logs"))
     database_url: str = Field(default="sqlite+aiosqlite:///data/jfc.db")
     dry_run: bool = Field(default=False)
 
@@ -163,18 +187,35 @@ class Settings(BaseSettings):
     def validate_config_path(cls, v: str | Path) -> Path:
         return Path(v) if isinstance(v, str) else v
 
-    @field_validator("posters_path", mode="before")
+    @field_validator("data_path", mode="before")
     @classmethod
-    def validate_posters_path(cls, v: str | Path | None) -> Path | None:
-        if v is None:
-            return None
+    def validate_data_path(cls, v: str | Path) -> Path:
         return Path(v) if isinstance(v, str) else v
 
+    @field_validator("log_path", mode="before")
+    @classmethod
+    def validate_log_path(cls, v: str | Path) -> Path:
+        return Path(v) if isinstance(v, str) else v
+
+    def get_data_path(self) -> Path:
+        """Get data directory path."""
+        return self.data_path
+
     def get_posters_path(self) -> Path:
-        """Get effective posters path (default: config_path/posters)."""
-        if self.posters_path:
-            return self.posters_path
-        return self.config_path / "posters"
+        """Get posters directory (under data)."""
+        return self.get_data_path() / "posters"
+
+    def get_cache_path(self) -> Path:
+        """Get cache directory (under data)."""
+        return self.get_data_path() / "cache"
+
+    def get_reports_path(self) -> Path:
+        """Get reports directory (under data)."""
+        return self.get_data_path() / "reports"
+
+    def get_log_path(self) -> Path:
+        """Get logs directory path."""
+        return self.log_path
 
     @property
     def jellyfin(self) -> JellyfinSettings:
@@ -214,6 +255,9 @@ class Settings(BaseSettings):
         return OpenAISettings(
             api_key=self.openai_api_key,
             enabled=self.openai_enabled,
+            explicit_refs=self.openai_explicit_refs,
+            poster_history_limit=self.openai_poster_history_limit,
+            prompt_history_limit=self.openai_prompt_history_limit,
         )
 
     @property
@@ -253,7 +297,9 @@ class Settings(BaseSettings):
     def scheduler(self) -> SchedulerSettings:
         """Get Scheduler settings."""
         return SchedulerSettings(
-            cron=self.scheduler_cron,
+            collections_cron=self.scheduler_collections_cron,
+            posters_cron=self.scheduler_posters_cron,
+            run_on_start=self.scheduler_run_on_start,
             timezone=self.scheduler_timezone,
         )
 

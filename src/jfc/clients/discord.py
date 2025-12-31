@@ -1,6 +1,8 @@
 """Discord webhook client for notifications."""
 
+import json
 from datetime import datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 import httpx
@@ -80,6 +82,66 @@ class DiscordWebhook:
         except Exception as e:
             logger.error(f"Failed to send Discord notification: {e}")
             return False
+
+    async def _send_with_file(
+        self,
+        url: str,
+        embeds: list[dict[str, Any]],
+        file_path: Path,
+        username: str = "Jellyfin Collection",
+    ) -> bool:
+        """
+        Send webhook message with file attachment.
+
+        Args:
+            url: Webhook URL
+            embeds: List of embed objects
+            file_path: Path to the file to attach
+            username: Bot username to display
+        """
+        if not url:
+            logger.debug("No webhook URL configured, skipping notification")
+            return False
+
+        if not file_path.exists():
+            logger.warning(f"File not found for Discord upload: {file_path}")
+            return await self._send(url, embeds=embeds, username=username)
+
+        try:
+            # Prepare multipart form data
+            payload = {
+                "username": username,
+                "embeds": embeds,
+            }
+
+            # Read the file
+            with open(file_path, "rb") as f:
+                file_content = f.read()
+
+            # Create multipart form
+            files = {
+                "file": (file_path.name, file_content, "image/png"),
+            }
+
+            # payload_json must be sent as form field, not JSON body
+            data = {
+                "payload_json": json.dumps(payload),
+            }
+
+            async with httpx.AsyncClient(timeout=30.0) as client:
+                response = await client.post(url, data=data, files=files)
+
+                if response.status_code == 200:
+                    logger.debug(f"Discord notification with image sent successfully")
+                    return True
+                else:
+                    logger.warning(f"Discord webhook returned {response.status_code}: {response.text}")
+                    return False
+
+        except Exception as e:
+            logger.error(f"Failed to send Discord notification with file: {e}")
+            # Fallback to sending without file
+            return await self._send(url, embeds=embeds, username=username)
 
     # =========================================================================
     # Event Notifications
@@ -366,3 +428,186 @@ class DiscordWebhook:
         }
 
         return await self._send(url, embeds=[embed])
+
+    async def send_collection_report(
+        self,
+        collection_name: str,
+        library: str,
+        source_provider: str,
+        items_fetched: int,
+        items_after_filters: int,
+        items_matched: int,
+        items_missing: int,
+        match_rate: float,
+        items_added: int,
+        items_removed: int,
+        radarr_requests: int = 0,
+        sonarr_requests: int = 0,
+        matched_titles: Optional[list[str]] = None,
+        added_titles: Optional[list[str]] = None,
+        missing_titles: Optional[list[str]] = None,
+        radarr_titles: Optional[list[str]] = None,
+        sonarr_titles: Optional[list[str]] = None,
+        poster_path: Optional[Path] = None,
+        success: bool = True,
+        error_message: Optional[str] = None,
+    ) -> bool:
+        """
+        Send rich collection report notification with poster image.
+
+        Args:
+            collection_name: Name of the collection
+            library: Library name (Films, Séries, Cartoons)
+            source_provider: Data source (TMDb Trending, Trakt Popular, etc.)
+            items_fetched: Number of items fetched from source
+            items_after_filters: Items remaining after filters applied
+            items_matched: Items found in Jellyfin library
+            items_missing: Items not in library
+            match_rate: Percentage of items matched
+            items_added: Items added to collection
+            items_removed: Items removed from collection
+            radarr_requests: Number of requests sent to Radarr
+            sonarr_requests: Number of requests sent to Sonarr
+            matched_titles: All titles matched in Jellyfin library
+            added_titles: Titles newly added to collection
+            missing_titles: Titles not in library
+            radarr_titles: Titles sent to Radarr
+            sonarr_titles: Titles sent to Sonarr
+            poster_path: Path to generated poster image
+            success: Whether the sync was successful
+            error_message: Error message if failed
+        """
+        url = self._get_url("changes")
+        if not url:
+            return False
+
+        # Skip if nothing interesting happened
+        if items_added == 0 and items_removed == 0 and radarr_requests == 0 and sonarr_requests == 0:
+            logger.debug(f"No changes for {collection_name}, skipping Discord notification")
+            return True
+
+        # Color based on status and match rate
+        if not success:
+            color = 15158332  # Red - error
+        elif match_rate >= 90:
+            color = 3066993  # Green - excellent
+        elif match_rate >= 70:
+            color = 16776960  # Yellow - good
+        elif match_rate >= 50:
+            color = 15105570  # Orange - moderate
+        else:
+            color = 15158332  # Red - poor
+
+        # Library emoji
+        library_emoji = {
+            "Films": "🎬",
+            "Séries": "📺",
+            "Cartoons": "🎨",
+        }.get(library, "📁")
+
+        # Build embed
+        embed: dict[str, Any] = {
+            "author": {
+                "name": f"{library_emoji} {library}",
+            },
+            "title": collection_name,
+            "color": color,
+            "timestamp": datetime.utcnow().isoformat(),
+            "fields": [],
+            "footer": {
+                "text": f"Source: {source_provider}",
+            },
+        }
+
+        # Add error message if failed
+        if not success and error_message:
+            embed["description"] = f"❌ **Error:** {error_message[:200]}"
+            return await self._send(url, embeds=[embed])
+
+        # Stats summary line
+        stats_parts = [f"📊 {items_fetched} fetched"]
+        if items_after_filters != items_fetched:
+            stats_parts.append(f"🔍 {items_after_filters} filtered")
+        stats_parts.append(f"✅ {items_matched} matched ({match_rate:.0f}%)")
+        if items_missing > 0:
+            stats_parts.append(f"❌ {items_missing} missing")
+
+        embed["description"] = " → ".join(stats_parts)
+
+        # Build unified item list
+        added_set = set(added_titles or [])
+        radarr_set = set(radarr_titles or [])
+        sonarr_set = set(sonarr_titles or [])
+
+        item_lines: list[str] = []
+
+        # Add matched items (in library)
+        for title in (matched_titles or []):
+            if title in added_set:
+                item_lines.append(f"✅ {title} `(new)`")
+            else:
+                item_lines.append(f"✅ {title}")
+
+        # Add missing items
+        for title in (missing_titles or []):
+            if title in radarr_set:
+                item_lines.append(f"❌ {title} `→ Radarr`")
+            elif title in sonarr_set:
+                item_lines.append(f"❌ {title} `→ Sonarr`")
+            else:
+                item_lines.append(f"❌ {title} `(missing)`")
+
+        # Format item list field (Discord limit: 1024 chars per field)
+        if item_lines:
+            total_items = len(item_lines)
+            # Show up to 15 items, then truncate
+            max_items = 15
+            display_lines = item_lines[:max_items]
+            items_text = "\n".join(display_lines)
+
+            if total_items > max_items:
+                items_text += f"\n*... +{total_items - max_items} more*"
+
+            # Truncate if still too long
+            if len(items_text) > 1020:
+                items_text = items_text[:1020] + "..."
+
+            embed["fields"].append({
+                "name": f"📋 Collection ({total_items} items)",
+                "value": items_text,
+                "inline": False,
+            })
+
+        # Summary of changes (inline fields)
+        if items_added > 0 or items_removed > 0:
+            changes_parts = []
+            if items_added > 0:
+                changes_parts.append(f"+{items_added} added")
+            if items_removed > 0:
+                changes_parts.append(f"-{items_removed} removed")
+            embed["fields"].append({
+                "name": "📝 Changes",
+                "value": " / ".join(changes_parts),
+                "inline": True,
+            })
+
+        if radarr_requests > 0:
+            embed["fields"].append({
+                "name": "🎥 Radarr",
+                "value": f"{radarr_requests} requested",
+                "inline": True,
+            })
+
+        if sonarr_requests > 0:
+            embed["fields"].append({
+                "name": "📺 Sonarr",
+                "value": f"{sonarr_requests} requested",
+                "inline": True,
+            })
+
+        # If poster exists, attach it as the main image
+        if poster_path and poster_path.exists():
+            embed["image"] = {"url": f"attachment://{poster_path.name}"}
+            return await self._send_with_file(url, embeds=[embed], file_path=poster_path)
+        else:
+            return await self._send(url, embeds=[embed])

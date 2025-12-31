@@ -3,6 +3,7 @@
 import random
 import time
 from datetime import date
+from pathlib import Path
 from typing import Any, Optional
 
 from loguru import logger
@@ -174,7 +175,7 @@ class CollectionBuilder:
         media_type: MediaType = MediaType.MOVIE,
         add_missing_to_arr: bool = True,
         force_poster: bool = False,
-    ) -> tuple[int, int]:
+    ) -> tuple[int, int, Optional[Path]]:
         """
         Sync collection to Jellyfin.
 
@@ -186,11 +187,11 @@ class CollectionBuilder:
             force_poster: Force regeneration of AI poster
 
         Returns:
-            Tuple of (items_added, items_removed)
+            Tuple of (items_added, items_removed, poster_path)
         """
         if self.dry_run:
             logger.info(f"[DRY RUN] Would sync collection: {collection.config.name}")
-            return (0, 0)
+            return (0, 0, None)
 
         # Get or create Jellyfin collection
         jellyfin_collections = await self.jellyfin.get_collections()
@@ -277,7 +278,7 @@ class CollectionBuilder:
         )
 
         # Upload poster (manual or AI-generated)
-        await self._upload_poster(collection, media_type, force_regenerate=force_poster)
+        _, poster_path = await self._upload_poster(collection, media_type, force_regenerate=force_poster)
 
         # Add missing items to Radarr/Sonarr
         if add_missing_to_arr:
@@ -285,7 +286,7 @@ class CollectionBuilder:
             report.items_sent_to_radarr = radarr_count
             report.items_sent_to_sonarr = sonarr_count
 
-        return (len(to_add), len(to_remove))
+        return (len(to_add), len(to_remove), poster_path)
 
     async def _fetch_items(
         self,
@@ -661,7 +662,7 @@ class CollectionBuilder:
         collection: Collection,
         media_type: MediaType,
         force_regenerate: bool = False,
-    ) -> bool:
+    ) -> tuple[bool, Optional[Path]]:
         """
         Upload poster image for collection if configured.
 
@@ -674,13 +675,13 @@ class CollectionBuilder:
             force_regenerate: Force regeneration of AI poster
 
         Returns:
-            True if poster was uploaded successfully
+            Tuple of (success, poster_path)
         """
         if not collection.jellyfin_id:
-            return False
+            return False, None
 
         settings = get_settings()
-        poster_path = None
+        poster_path: Optional[Path] = None
 
         # 1. Force regenerate with AI if requested and enabled
         if force_regenerate and self.poster_generator and settings.openai.enabled:
@@ -695,17 +696,24 @@ class CollectionBuilder:
                 config=collection.config,
                 items=media_items,
                 category=category,
+                library=collection.library_name,
                 force_regenerate=True,
+                explicit_refs=settings.openai.explicit_refs,
             )
             if poster_path:
                 logger.success(f"Generated AI poster: {poster_path.name}")
 
         # 2. Check for manually configured poster
         elif collection.config.poster:
-            poster_path = settings.get_posters_path() / collection.config.poster
+            manual_path = settings.get_posters_path() / collection.config.poster
+            if manual_path.exists():
+                poster_path = manual_path
+            elif self.poster_generator and settings.openai.enabled:
+                # Manual poster not found, fallback to AI
+                logger.debug(f"Manual poster '{collection.config.poster}' not found, using AI")
 
         # 3. If no manual poster and AI generation enabled, generate one
-        elif self.poster_generator and settings.openai.enabled:
+        if not poster_path and self.poster_generator and settings.openai.enabled:
             # Map media type to category
             category = self._get_poster_category(collection.library_name, media_type)
 
@@ -717,13 +725,15 @@ class CollectionBuilder:
                 config=collection.config,
                 items=media_items,
                 category=category,
+                library=collection.library_name,
                 force_regenerate=False,
+                explicit_refs=settings.openai.explicit_refs,
             )
             if poster_path:
                 logger.success(f"Generated AI poster: {poster_path.name}")
 
         if not poster_path or not poster_path.exists():
-            return False
+            return False, None
 
         try:
             success = await self.jellyfin.upload_collection_poster(
@@ -732,18 +742,18 @@ class CollectionBuilder:
             )
             if success:
                 logger.success(f"Uploaded poster for '{collection.config.name}'")
-            return success
+            return success, poster_path
         except FileNotFoundError:
             logger.warning(
                 f"Poster file not found for '{collection.config.name}': {poster_path}"
             )
-            return False
+            return False, poster_path
         except ValueError as e:
             logger.warning(f"Invalid poster for '{collection.config.name}': {e}")
-            return False
+            return False, poster_path
         except Exception as e:
             logger.error(f"Failed to upload poster for '{collection.config.name}': {e}")
-            return False
+            return False, poster_path
 
     def _get_poster_category(self, library_name: str, media_type: MediaType) -> str:
         """

@@ -55,12 +55,10 @@ USER jfc
 # Volumes
 VOLUME ["/config", "/data", "/logs"]
 
-# Healthcheck
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import httpx; httpx.get('http://localhost:8080/health')" || exit 1
+# Healthcheck - vérifie que le process Python tourne
+HEALTHCHECK --interval=60s --timeout=10s --start-period=30s --retries=3 \
+    CMD pgrep -f "jfc.cli" || exit 1
 
-# Expose port for API
-EXPOSE 8080
-
-# Default command
-CMD ["python", "-m", "jfc.cli", "run"]
+# Default command: run scheduler daemon
+# Override with: docker run ... python -m jfc.cli run (single run)
+CMD ["python", "-m", "jfc.cli", "schedule"]
