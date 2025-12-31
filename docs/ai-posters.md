@@ -88,6 +88,9 @@ OPENAI_POSTER_HISTORY_LIMIT=5
 
 # Keep N prompt JSON files
 OPENAI_PROMPT_HISTORY_LIMIT=10
+
+# Logo text at bottom of posters (default: NETFLEX)
+OPENAI_POSTER_LOGO_TEXT=NETFLEX
 ```
 
 ## File Structure
@@ -216,9 +219,17 @@ Each generation saves its prompt for debugging:
 
 JFC uses Jinja2 templates for prompt generation. You can customize these templates to change the visual style of generated posters.
 
+### Template Override System
+
+Templates use a priority system:
+1. **User templates** (`config/templates/`) - Your customizations
+2. **Package templates** (`src/jfc/templates/`) - Shipped defaults
+
+To customize a template, copy it from `src/jfc/templates/` to `config/templates/` and edit it.
+
 ### Template Files
 
-Templates are stored in `config/templates/`:
+Templates are located in `src/jfc/templates/` (defaults) and can be overridden in `config/templates/`:
 
 | File | Description |
 |------|-------------|
@@ -230,15 +241,21 @@ Templates are stored in `config/templates/`:
 
 ### Quick Start
 
-1. Copy example templates:
+1. Create the config/templates directory:
    ```bash
-   cp docs/examples/templates/*.j2 config/templates/
-   cp docs/examples/templates/*.yaml config/templates/
+   mkdir -p config/templates
    ```
 
-2. Edit the templates in `config/templates/`
+2. Copy the template(s) you want to customize:
+   ```bash
+   # Copy from package defaults
+   cp src/jfc/templates/base_structure.j2 config/templates/
+   cp src/jfc/templates/category_styles.yaml config/templates/
+   ```
 
-3. Restart JFC to apply changes
+3. Edit the templates in `config/templates/`
+
+4. Restart JFC to apply changes
 
 ### Category Styles
 

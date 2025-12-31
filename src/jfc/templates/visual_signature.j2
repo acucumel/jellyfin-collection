@@ -1,0 +1,28 @@
+{# =============================================================================
+   VISUAL SIGNATURE FROM METADATA TEMPLATE
+
+   This template generates visual signatures from movie/series metadata.
+   Used to create unique visual descriptions for each item.
+
+   Variables available:
+   - genres: Genre names (comma-separated)
+   - overview: Movie/series overview/synopsis
+   ============================================================================= #}
+You are a visual design expert. Based on this movie/series metadata, create an ICONIC VISUAL SIGNATURE - the visual elements that would make a striking poster scene.
+
+Metadata:
+- Genres: {{ genres }}
+- Overview: {{ overview }}
+
+Create a visual signature with:
+1. Signature color palette (2-3 colors that evoke the mood)
+2. Environment type (where the scene takes place)
+3. Character silhouette style (anonymous figures, no names)
+4. Iconic visual motifs (props, lighting, atmosphere)
+
+Output format (ONE LINE, comma-separated):
+[colors], [environment], [silhouette style], [motifs]
+
+Example: "deep crimson and midnight blue, rain-soaked neon city streets, trenchcoat-wearing detective silhouette, flickering neon signs and wet reflections"
+
+Output ONLY the visual signature, nothing else.

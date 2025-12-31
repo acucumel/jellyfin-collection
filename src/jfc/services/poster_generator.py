@@ -33,72 +33,8 @@ API_TIMEOUT = httpx.Timeout(
 
 
 # =============================================================================
-# JINJA2 TEMPLATES - DEFAULT FALLBACKS
+# CONSTANTS
 # =============================================================================
-
-# Default Jinja2 environment (will be overridden if external templates exist)
-_default_jinja_env = Environment(loader=BaseLoader(), autoescape=False)
-
-# Base structure (IMMUTABLE) - applies to ALL posters
-# This is the DEFAULT template - can be overridden by config/templates/base_structure.j2
-DEFAULT_BASE_STRUCTURE_TEMPLATE = """{{ poster_style }} poster, vertical 2:3 ratio, photorealistic cinematic quality.
-
-=== TYPOGRAPHY (CRITICAL - MUST BE EXACT) ===
-
-TOP TEXT BLOCK - horizontally centered, positioned at exactly 12% from top edge:
-
-Line 1: "{{ category }}" in BOLD UPPERCASE - STYLIZED TITLE
-- Font: Heavy condensed sans-serif (like Bebas Neue or Impact)
-- Size: 144pt equivalent, MASSIVE and dominant (bigger than everything else)
-- Color: Vertical gradient from bright white (#FFFFFF) at top to light silver/gray (#C0C0C0) at bottom
-- Subtle 3D effect: thin black outline/stroke (2px) + soft drop shadow (not too heavy)
-- Metallic sheen effect for premium look
-- Letter-spacing: wide tracking for cinematic impact
-- Style like a Hollywood blockbuster movie title card
-
-Line 2: "{{ collection_display_name }}" directly below, small gap (8px equivalent)
-- Font: Same font family, medium weight
-- Size: 72pt equivalent (60% of category size) - MUST BE CLEARLY READABLE
-- Color: White with subtle orange/gold outer glow effect
-- Black drop shadow for contrast
-- Add a small thematic emoji icon before the text
-
-BOTTOM LOGO - horizontally centered, positioned at exactly 92% from top (8% from bottom):
-- Text "NETFLEX" only - NO background box
-- Font: Bold condensed sans-serif, 48pt equivalent
-- Color: Bright red (#E50914) like Netflix red
-- Strong black drop shadow and black outline for readability
-- Styled like the Netflix wordmark but with "NETFLEX"
-
-=== SCENE ===
-
-{{ scene_description }}
-
-CRITICAL SCENE RULES:
-- All objects must be grounded (on floor, held by characters, on surfaces)
-- NO floating objects, NO items suspended in mid-air
-- Scene must look like a real photograph or movie still
-- Characters should be walking, standing, or interacting naturally
-
-Color palette: {{ color_palette }}.
-{{ mood_style }}
-
-=== PHOTOREALISTIC RENDERING ===
-- Shot with professional cinema camera, 35mm anamorphic lens
-- Shallow depth of field with cinematic bokeh
-- {{ lighting_style }}
-- Real textures: skin pores, fabric weave, surface imperfections
-- Subtle film grain for cinematic feel
-- Natural color grading, no oversaturation
-
-=== STRICT LAYOUT INVARIANTS ===
-- Text positioning MUST be identical across all generated images
-- Category text at 12% from top, collection name immediately below with 8px gap
-- NETFLEX logo at 92% from top (8% from bottom)
-- All text horizontally centered on the poster
-- Subtle dark vignette/gradient at top and bottom for text readability
-- Single coherent scene, NO collage or grid of images
-- NO extra text, NO watermarks, NO additional logos besides NETFLEX"""
 
 # TMDb genre ID to name mapping
 TMDB_GENRES = {
@@ -112,186 +48,6 @@ TMDB_GENRES = {
     10767: "Talk", 10768: "War & Politics",
 }
 
-# Prompt for generating visual signatures from metadata (not titles)
-# This is the DEFAULT template - can be overridden by config/templates/visual_signature.j2
-DEFAULT_VISUAL_SIGNATURE_TEMPLATE = """You are a visual design expert. Based on this movie/series metadata, create an ICONIC VISUAL SIGNATURE - the visual elements that would make a striking poster scene.
-
-Metadata:
-- Genres: {{ genres }}
-- Overview: {{ overview }}
-
-Create a visual signature with:
-1. Signature color palette (2-3 colors that evoke the mood)
-2. Environment type (where the scene takes place)
-3. Character silhouette style (anonymous figures, no names)
-4. Iconic visual motifs (props, lighting, atmosphere)
-
-Output format (ONE LINE, comma-separated):
-[colors], [environment], [silhouette style], [motifs]
-
-Example: "deep crimson and midnight blue, rain-soaked neon city streets, trenchcoat-wearing detective silhouette, flickering neon signs and wet reflections"
-
-Output ONLY the visual signature, nothing else."""
-
-# Scene description prompt template - uses visual signatures
-# This is the DEFAULT template - can be overridden by config/templates/scene_description.j2
-DEFAULT_SCENE_PROMPT_TEMPLATE = """You are a cinematic poster designer creating a visually striking scene.
-
-Collection theme: "{{ collection_name }}"
-Category: {{ category }}
-Mood: {{ mood_hint }}
-Color palette: {{ color_hint }}
-
-VISUAL ELEMENTS TO INCORPORATE (from top media in this collection):
-{{ visual_signatures }}
-
-Create a dramatic cinematic scene that NATURALLY BLENDS these visual elements into ONE coherent environment.
-
-RULES:
-1. Describe ONE unified cinematic scene - NOT a collage
-2. The TOP visual elements (first 2-3) should be PROMINENT in the foreground
-3. Secondary elements can appear as subtle background details
-4. Use SILHOUETTES and ANONYMOUS FIGURES - no character names
-5. Focus on ATMOSPHERE, LIGHTING, and ENVIRONMENT
-6. All elements must be GROUNDED (on floor, held, on surfaces) - NO floating objects
-7. Keep it 2-3 sentences max
-
-GOOD example: "A tall silhouette with pointed ears stands in a bioluminescent jungle clearing, cyan light from glowing plants reflecting off their skin, while in the distance emerald green magical sparks swirl around a cloaked figure on a golden brick path, both gazing at a towering crystalline city where orange flames lick the skyline."
-
-Output ONLY the scene description, nothing else."""
-
-# Artistic direction per category
-# This is the DEFAULT configuration - can be overridden by config/templates/category_styles.yaml
-DEFAULT_CATEGORY_STYLES = {
-    "FILMS": {
-        "poster_style": "Cinematic blockbuster",
-        "base_mood": "Ultra-detailed, dramatic lighting, epic scale, modern Hollywood spectacle.",
-        "scene_context": "cinematic movie scene",
-        "lighting_style": "Dramatic three-point lighting with rim light, golden hour ambiance or moody blue hour",
-    },
-    "SÉRIES": {
-        "poster_style": "Prestige TV",
-        "base_mood": "Ultra-detailed, binge-worthy, prestige TV aesthetics.",
-        "scene_context": "prestige TV scene",
-        "lighting_style": "Soft diffused lighting with dramatic shadows, intimate atmosphere",
-    },
-    "CARTOONS": {
-        "poster_style": "Bright and colorful Pixar/Disney-style 3D animated",
-        "base_mood": "Vibrant saturated colors, joyful atmosphere, family-friendly, whimsical and magical, 100% child-safe.",
-        "scene_context": "cheerful animated adventure scene",
-        "lighting_style": "Bright sunny lighting with rainbow-colored accents, magical sparkles and warm glows",
-        "color_override": "bright primary colors (red, blue, yellow) + candy pastels + golden sunshine",
-    },
-}
-
-# Collection type themes (for color palette and mood hints)
-# This is the DEFAULT configuration - can be overridden by config/templates/collection_themes.yaml
-DEFAULT_COLLECTION_THEMES = {
-    # Trending/Popular
-    "tendances": {
-        "color_hint": "fiery orange + electric blue",
-        "mood_hint": "high-energy, trending, viral sensation",
-        "scene_hint": "dynamic action with multiple genre references",
-    },
-    "populaires": {
-        "color_hint": "gold + orange + deep blue",
-        "mood_hint": "crowd-pleasing, mainstream success",
-        "scene_hint": "confident heroes and spectacular moments",
-    },
-    # Quality
-    "top": {
-        "color_hint": "deep blacks + gold accents + subtle blues",
-        "mood_hint": "refined, prestigious, award-worthy",
-        "scene_hint": "elegant composition with symbolic elements",
-    },
-    "mieux": {
-        "color_hint": "warm tones + gold highlights",
-        "mood_hint": "celebrated, acclaimed, top-rated",
-        "scene_hint": "proud characters with stars and recognition symbols",
-    },
-    # Discovery
-    "pépites": {
-        "color_hint": "dark teal + crystal glow",
-        "mood_hint": "intimate, discovery, hidden treasure",
-        "scene_hint": "lone viewer discovering something precious",
-    },
-    "cachées": {
-        "color_hint": "midnight blue + amber highlights",
-        "mood_hint": "secret, underground, cult favorite",
-        "scene_hint": "mysterious discovery atmosphere",
-    },
-    # New/Recent
-    "nouveautés": {
-        "color_hint": "neon blue + purple + warm orange",
-        "mood_hint": "fresh, just released, contemporary",
-        "scene_hint": "modern premiere atmosphere with recent release energy",
-    },
-    "récent": {
-        "color_hint": "neon blue + purple + glossy reflections",
-        "mood_hint": "current, fresh off the press",
-        "scene_hint": "cinema foyer with new release posters",
-    },
-    # Status
-    "cours": {
-        "color_hint": "deep blues + warm signal glow",
-        "mood_hint": "ongoing, unfolding, anticipation",
-        "scene_hint": "characters walking forward, story continues",
-    },
-    "complètes": {
-        "color_hint": "warm sunset tones",
-        "mood_hint": "satisfying conclusion, bingeable",
-        "scene_hint": "peaceful resolution, symbolic endings",
-    },
-    # Episodes
-    "épisodes": {
-        "color_hint": "electric blue + orange accents",
-        "mood_hint": "suspenseful, cliffhanger, must-watch",
-        "scene_hint": "frozen action moment, notification motifs",
-    },
-    "regardé": {
-        "color_hint": "gold spotlights + midnight blue",
-        "mood_hint": "global phenomenon, everyone watching",
-        "scene_hint": "screens showing iconic moments",
-    },
-    # Genres
-    "action": {
-        "color_hint": "neon blue + fiery orange + metallic",
-        "mood_hint": "explosive, kinetic, adrenaline",
-        "scene_hint": "rain-soaked action with sparks and motion",
-    },
-    "comédie": {
-        "color_hint": "warm sunshine + candy accents",
-        "mood_hint": "joyful, fun, crowd-pleaser",
-        "scene_hint": "bright comedic chase with exaggerated expressions",
-    },
-    "horreur": {
-        "color_hint": "cold blues + sickly green + ember glow",
-        "mood_hint": "dread-filled, tension, suspense",
-        "scene_hint": "foggy corridor with unsettling silhouettes",
-    },
-    "science": {
-        "color_hint": "deep space blue + teal neon + sand gold",
-        "mood_hint": "epic scale, awe, wonder",
-        "scene_hint": "vast sci-fi vista with colossal ships",
-    },
-    "français": {
-        "color_hint": "navy + warm streetlamp gold",
-        "mood_hint": "stylish, elegant, unmistakably French",
-        "scene_hint": "Parisian night with classic cinema facade",
-    },
-    "cinéma": {
-        "color_hint": "cinematic red + warm gold + deep blacks",
-        "mood_hint": "glamorous, premiere, opening night",
-        "scene_hint": "red carpet with spotlights and theater entrance",
-    },
-    # Kids
-    "nina": {
-        "color_hint": "pastel rainbow colors",
-        "mood_hint": "joyful, magical, child-friendly",
-        "scene_hint": "smiling characters in soft fantasy world",
-    },
-}
-
 
 # =============================================================================
 # POSTER GENERATOR SERVICE
@@ -301,6 +57,9 @@ DEFAULT_COLLECTION_THEMES = {
 class PosterGenerator:
     """Generate collection posters using OpenAI gpt-image-1.5 and GPT-5.1."""
 
+    # Package templates directory (fallback)
+    PACKAGE_TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
+
     def __init__(
         self,
         api_key: str,
@@ -309,6 +68,7 @@ class PosterGenerator:
         templates_dir: Optional[Path] = None,
         poster_history_limit: int = 5,
         prompt_history_limit: int = 10,
+        logo_text: str = "NETFLEX",
     ):
         """
         Initialize poster generator.
@@ -320,6 +80,7 @@ class PosterGenerator:
             templates_dir: Directory for custom templates (config/templates)
             poster_history_limit: Number of old posters to keep (0=unlimited)
             prompt_history_limit: Number of prompt JSON files to keep (0=unlimited)
+            logo_text: Logo text for bottom of posters (default: NETFLEX)
         """
         self.client = AsyncOpenAI(api_key=api_key, timeout=API_TIMEOUT)
         self.output_dir = output_dir
@@ -329,81 +90,109 @@ class PosterGenerator:
         self.poster_history_limit = poster_history_limit
         self.prompt_history_limit = prompt_history_limit
 
+        # Logo text for posters
+        self.logo_text = logo_text
+
         # Cache directory (separate from output)
         self.cache_dir = cache_dir or output_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-        # Templates directory for external customization
-        self.templates_dir = templates_dir
+        # Templates directories: user overrides > package defaults
+        self.templates_dir = templates_dir  # User overrides (config/templates)
+        self.package_templates_dir = self.PACKAGE_TEMPLATES_DIR  # Package defaults
 
-        # Load external templates and configurations
-        self._load_external_templates()
+        # Load templates and configurations
+        self._load_templates()
 
         # Load cached visual signatures
         self.signatures_cache_path = self.cache_dir / "visual_signatures_cache.json"
         self.signatures_cache = self._load_signatures_cache()
 
-        logger.info(f"PosterGenerator initialized (output: {output_dir})")
+        logger.info(f"PosterGenerator initialized (output: {output_dir}, logo: {logo_text})")
         if templates_dir and templates_dir.exists():
-            logger.info(f"Custom templates loaded from: {templates_dir}")
+            logger.info(f"Custom templates from: {templates_dir}")
+        logger.info(f"Package templates from: {self.package_templates_dir}")
         logger.info(f"Retention: {poster_history_limit} posters, {prompt_history_limit} prompts")
         logger.debug(f"Loaded {len(self.signatures_cache)} cached visual signatures")
         if self.signatures_cache:
             logger.debug(f"Cache keys sample: {list(self.signatures_cache.keys())[:5]}")
 
-    def _load_external_templates(self) -> None:
-        """Load external Jinja2 templates and YAML configurations."""
-        # Initialize Jinja2 environment
-        if self.templates_dir and self.templates_dir.exists():
-            # Use FileSystemLoader for external templates with fallback to strings
-            self.jinja_env = Environment(
-                loader=FileSystemLoader(str(self.templates_dir)),
-                autoescape=False
-            )
-            logger.debug(f"Jinja2 environment using templates from: {self.templates_dir}")
-        else:
-            # Use default string-based templates
-            self.jinja_env = Environment(loader=BaseLoader(), autoescape=False)
-            logger.debug("Jinja2 environment using embedded default templates")
+    def _load_templates(self) -> None:
+        """Load Jinja2 templates and YAML configurations.
 
-        # Load YAML configurations with fallback to defaults
-        self.category_styles = self._load_yaml_config(
-            "category_styles.yaml", DEFAULT_CATEGORY_STYLES
-        )
-        self.collection_themes = self._load_yaml_config(
-            "collection_themes.yaml", DEFAULT_COLLECTION_THEMES
-        )
-        # Note: visual_signatures_db is no longer used - signatures are generated
-        # by GPT and cached in visual_signatures_cache.json
+        Priority: config/templates (user) > src/jfc/templates (package)
+        """
+        # Initialize Jinja2 environment with BaseLoader (we'll load manually)
+        self.jinja_env = Environment(loader=BaseLoader(), autoescape=False)
 
-    def _load_yaml_config(self, filename: str, default: dict) -> dict:
-        """Load a YAML configuration file with fallback to default."""
+        # Load YAML configurations (user override > package default)
+        self.category_styles = self._load_yaml_config("category_styles.yaml")
+        self.collection_themes = self._load_yaml_config("collection_themes.yaml")
+
+    def _load_yaml_config(self, filename: str) -> dict:
+        """Load a YAML configuration file.
+
+        Priority: config/templates (user) > src/jfc/templates (package)
+        """
+        # 1. Try user override (config/templates)
         if self.templates_dir:
-            config_path = self.templates_dir / filename
-            if config_path.exists():
+            user_path = self.templates_dir / filename
+            if user_path.exists():
                 try:
-                    with open(config_path, encoding="utf-8") as f:
+                    with open(user_path, encoding="utf-8") as f:
                         loaded = yaml.safe_load(f)
                         if loaded:
-                            logger.debug(f"Loaded external config: {filename}")
+                            logger.debug(f"Loaded user config: {filename}")
                             return loaded
                 except Exception as e:
-                    logger.warning(f"Failed to load {filename}: {e}, using defaults")
-        return default
+                    logger.warning(f"Failed to load user {filename}: {e}")
 
-    def _get_template(self, name: str, default: str) -> str:
-        """Get template content from file or return default."""
+        # 2. Fall back to package default (src/jfc/templates)
+        package_path = self.package_templates_dir / filename
+        if package_path.exists():
+            try:
+                with open(package_path, encoding="utf-8") as f:
+                    loaded = yaml.safe_load(f)
+                    if loaded:
+                        logger.debug(f"Loaded package config: {filename}")
+                        return loaded
+            except Exception as e:
+                logger.warning(f"Failed to load package {filename}: {e}")
+
+        # 3. Return empty dict if nothing found
+        logger.warning(f"No config found for {filename}")
+        return {}
+
+    def _get_template(self, name: str) -> str:
+        """Get template content from file.
+
+        Priority: config/templates (user) > src/jfc/templates (package)
+        """
+        # 1. Try user override (config/templates)
         if self.templates_dir:
-            template_path = self.templates_dir / name
-            if template_path.exists():
+            user_path = self.templates_dir / name
+            if user_path.exists():
                 try:
-                    with open(template_path, encoding="utf-8") as f:
+                    with open(user_path, encoding="utf-8") as f:
                         content = f.read()
-                        logger.debug(f"Loaded external template: {name}")
+                        logger.debug(f"Loaded user template: {name}")
                         return content
                 except Exception as e:
-                    logger.warning(f"Failed to load template {name}: {e}")
-        return default
+                    logger.warning(f"Failed to load user template {name}: {e}")
+
+        # 2. Fall back to package default (src/jfc/templates)
+        package_path = self.package_templates_dir / name
+        if package_path.exists():
+            try:
+                with open(package_path, encoding="utf-8") as f:
+                    content = f.read()
+                    logger.debug(f"Loaded package template: {name}")
+                    return content
+            except Exception as e:
+                logger.warning(f"Failed to load package template {name}: {e}")
+
+        # 3. Raise error if template not found
+        raise FileNotFoundError(f"Template not found: {name}")
 
     def _load_signatures_cache(self) -> dict[str, str]:
         """Load cached visual signatures from JSON file."""
@@ -593,10 +382,8 @@ IMPORTANT FOR CARTOONS:
             color_hint = theme.get("color_hint", "cinematic colors")
             extra_rules = ""
 
-        # Get template (external file or default)
-        template_content = self._get_template(
-            "scene_description.j2", DEFAULT_SCENE_PROMPT_TEMPLATE
-        )
+        # Get template (user override > package default)
+        template_content = self._get_template("scene_description.j2")
         template = self.jinja_env.from_string(template_content)
         base_prompt = template.render(
             collection_name=config.name,
@@ -698,10 +485,8 @@ IMPORTANT FOR CARTOONS:
             if len(overview) > 200:
                 overview = overview[:200] + "..."
 
-            # Get template (external file or default)
-            template_content = self._get_template(
-                "visual_signature.j2", DEFAULT_VISUAL_SIGNATURE_TEMPLATE
-            )
+            # Get template (user override > package default)
+            template_content = self._get_template("visual_signature.j2")
             template = self.jinja_env.from_string(template_content)
             prompt = template.render(genres=genres, overview=overview)
 
@@ -843,10 +628,8 @@ IMPORTANT FOR CARTOONS:
         if category == "CARTOONS":
             scene_prefix = "Bright, colorful, family-friendly animated scene"
 
-        # Get template (external file or default)
-        template_content = self._get_template(
-            "base_structure.j2", DEFAULT_BASE_STRUCTURE_TEMPLATE
-        )
+        # Get template (user override > package default)
+        template_content = self._get_template("base_structure.j2")
         template = self.jinja_env.from_string(template_content)
         return template.render(
             poster_style=style.get("poster_style", "Cinematic"),
@@ -856,6 +639,7 @@ IMPORTANT FOR CARTOONS:
             color_palette=color_palette,
             mood_style=style.get("base_mood", "Dramatic and engaging"),
             lighting_style=style.get("lighting_style", "Dramatic cinematic lighting"),
+            logo_text=self.logo_text,
         )
 
     async def _generate_image(

@@ -1,0 +1,196 @@
+# =============================================================================
+# COLLECTION THEMES CONFIGURATION
+#
+# Defines color palettes and mood hints based on collection name keywords.
+# When a collection name contains a keyword, these hints are applied.
+#
+# Each theme has:
+#   - color_hint: Color palette suggestion
+#   - mood_hint: Mood/atmosphere description
+#   - scene_hint: Scene composition hint
+# =============================================================================
+
+# --- Trending / Popular ---
+tendances:
+  color_hint: "fiery orange + electric blue"
+  mood_hint: "high-energy, trending, viral sensation"
+  scene_hint: "dynamic action with multiple genre references"
+
+trending:
+  color_hint: "fiery orange + electric blue"
+  mood_hint: "high-energy, trending, viral sensation"
+  scene_hint: "dynamic action with multiple genre references"
+
+populaires:
+  color_hint: "gold + orange + deep blue"
+  mood_hint: "crowd-pleasing, mainstream success"
+  scene_hint: "confident heroes and spectacular moments"
+
+popular:
+  color_hint: "gold + orange + deep blue"
+  mood_hint: "crowd-pleasing, mainstream success"
+  scene_hint: "confident heroes and spectacular moments"
+
+# --- Quality ---
+top:
+  color_hint: "deep blacks + gold accents + subtle blues"
+  mood_hint: "refined, prestigious, award-worthy"
+  scene_hint: "elegant composition with symbolic elements"
+
+mieux:
+  color_hint: "warm tones + gold highlights"
+  mood_hint: "celebrated, acclaimed, top-rated"
+  scene_hint: "proud characters with stars and recognition symbols"
+
+best:
+  color_hint: "warm tones + gold highlights"
+  mood_hint: "celebrated, acclaimed, top-rated"
+  scene_hint: "proud characters with stars and recognition symbols"
+
+# --- Discovery ---
+pepites:
+  color_hint: "dark teal + crystal glow"
+  mood_hint: "intimate, discovery, hidden treasure"
+  scene_hint: "lone viewer discovering something precious"
+
+hidden:
+  color_hint: "midnight blue + amber highlights"
+  mood_hint: "secret, underground, cult favorite"
+  scene_hint: "mysterious discovery atmosphere"
+
+cachees:
+  color_hint: "midnight blue + amber highlights"
+  mood_hint: "secret, underground, cult favorite"
+  scene_hint: "mysterious discovery atmosphere"
+
+# --- New / Recent ---
+nouveautes:
+  color_hint: "neon blue + purple + warm orange"
+  mood_hint: "fresh, just released, contemporary"
+  scene_hint: "modern premiere atmosphere with recent release energy"
+
+recent:
+  color_hint: "neon blue + purple + glossy reflections"
+  mood_hint: "current, fresh off the press"
+  scene_hint: "cinema foyer with new release posters"
+
+new:
+  color_hint: "neon blue + purple + warm orange"
+  mood_hint: "fresh, just released, contemporary"
+  scene_hint: "modern premiere atmosphere with recent release energy"
+
+# --- Status ---
+cours:
+  color_hint: "deep blues + warm signal glow"
+  mood_hint: "ongoing, unfolding, anticipation"
+  scene_hint: "characters walking forward, story continues"
+
+ongoing:
+  color_hint: "deep blues + warm signal glow"
+  mood_hint: "ongoing, unfolding, anticipation"
+  scene_hint: "characters walking forward, story continues"
+
+completes:
+  color_hint: "warm sunset tones"
+  mood_hint: "satisfying conclusion, bingeable"
+  scene_hint: "peaceful resolution, symbolic endings"
+
+completed:
+  color_hint: "warm sunset tones"
+  mood_hint: "satisfying conclusion, bingeable"
+  scene_hint: "peaceful resolution, symbolic endings"
+
+# --- Episodes ---
+episodes:
+  color_hint: "electric blue + orange accents"
+  mood_hint: "suspenseful, cliffhanger, must-watch"
+  scene_hint: "frozen action moment, notification motifs"
+
+regarde:
+  color_hint: "gold spotlights + midnight blue"
+  mood_hint: "global phenomenon, everyone watching"
+  scene_hint: "screens showing iconic moments"
+
+watched:
+  color_hint: "gold spotlights + midnight blue"
+  mood_hint: "global phenomenon, everyone watching"
+  scene_hint: "screens showing iconic moments"
+
+# --- Genres ---
+action:
+  color_hint: "neon blue + fiery orange + metallic"
+  mood_hint: "explosive, kinetic, adrenaline"
+  scene_hint: "rain-soaked action with sparks and motion"
+
+comedie:
+  color_hint: "warm sunshine + candy accents"
+  mood_hint: "joyful, fun, crowd-pleaser"
+  scene_hint: "bright comedic chase with exaggerated expressions"
+
+comedy:
+  color_hint: "warm sunshine + candy accents"
+  mood_hint: "joyful, fun, crowd-pleaser"
+  scene_hint: "bright comedic chase with exaggerated expressions"
+
+horreur:
+  color_hint: "cold blues + sickly green + ember glow"
+  mood_hint: "dread-filled, tension, suspense"
+  scene_hint: "foggy corridor with unsettling silhouettes"
+
+horror:
+  color_hint: "cold blues + sickly green + ember glow"
+  mood_hint: "dread-filled, tension, suspense"
+  scene_hint: "foggy corridor with unsettling silhouettes"
+
+science:
+  color_hint: "deep space blue + teal neon + sand gold"
+  mood_hint: "epic scale, awe, wonder"
+  scene_hint: "vast sci-fi vista with colossal ships"
+
+scifi:
+  color_hint: "deep space blue + teal neon + sand gold"
+  mood_hint: "epic scale, awe, wonder"
+  scene_hint: "vast sci-fi vista with colossal ships"
+
+francais:
+  color_hint: "navy + warm streetlamp gold"
+  mood_hint: "stylish, elegant, unmistakably French"
+  scene_hint: "Parisian night with classic cinema facade"
+
+french:
+  color_hint: "navy + warm streetlamp gold"
+  mood_hint: "stylish, elegant, unmistakably French"
+  scene_hint: "Parisian night with classic cinema facade"
+
+cinema:
+  color_hint: "cinematic red + warm gold + deep blacks"
+  mood_hint: "glamorous, premiere, opening night"
+  scene_hint: "red carpet with spotlights and theater entrance"
+
+# --- Kids ---
+nina:
+  color_hint: "pastel rainbow colors"
+  mood_hint: "joyful, magical, child-friendly"
+  scene_hint: "smiling characters in soft fantasy world"
+
+kids:
+  color_hint: "pastel rainbow colors"
+  mood_hint: "joyful, magical, child-friendly"
+  scene_hint: "smiling characters in soft fantasy world"
+
+enfants:
+  color_hint: "pastel rainbow colors"
+  mood_hint: "joyful, magical, child-friendly"
+  scene_hint: "smiling characters in soft fantasy world"
+
+# =============================================================================
+# CUSTOM THEMES
+#
+# Add your own themes below based on your collection naming conventions.
+# Example:
+#
+# classics:
+#   color_hint: "sepia + gold + warm amber"
+#   mood_hint: "timeless, nostalgic, golden age"
+#   scene_hint: "classic film reel with vintage aesthetics"
+# =============================================================================

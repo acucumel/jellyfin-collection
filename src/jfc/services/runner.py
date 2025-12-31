@@ -101,6 +101,7 @@ class Runner:
                 templates_dir=settings.get_templates_path(),
                 poster_history_limit=settings.openai.poster_history_limit,
                 prompt_history_limit=settings.openai.prompt_history_limit,
+                logo_text=settings.openai.poster_logo_text,
             )
             logger.info("AI poster generation enabled")
 
