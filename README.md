@@ -5,6 +5,11 @@
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![Docker Pulls](https://img.shields.io/docker/pulls/acucumel/jellyfin-collection)](https://github.com/acucumel/jellyfin-collection/pkgs/container/jellyfin-collection)
 
+<p align="center">
+  <img src="docs/doc-image-1.png" width="48%" alt="JFC Screenshot 1" />
+  <img src="docs/doc-image-2.png" width="48%" alt="JFC Screenshot 2" />
+</p>
+
 **Jellyfin Collection (JFC)** is a powerful, Kometa-compatible collection manager designed specifically for [Jellyfin](https://jellyfin.org/). It automatically creates and maintains media collections by fetching trending, popular, and curated content from TMDb, Trakt, and other sources.
 
 If you're migrating from Plex and miss [Kometa](https://github.com/Kometa-Team/Kometa) (formerly Plex Meta Manager), JFC brings the same YAML-based configuration to Jellyfin with additional features like **AI-generated posters** using OpenAI and seamless **Sonarr/Radarr integration** to automatically request missing media.
