@@ -153,7 +153,7 @@ class CollectionItem(BaseModel):
 
     # Metadata for AI poster generation
     overview: Optional[str] = None
-    genres: Optional[list[int]] = None
+    genres: Optional[list[int | str]] = None  # int for TMDb IDs, str for Trakt names
 
 
 class CollectionConfig(BaseModel):

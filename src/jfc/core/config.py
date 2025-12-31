@@ -1,17 +1,83 @@
-"""Application configuration using Pydantic Settings."""
+"""Application configuration using Pydantic Settings.
+
+Supports configuration from multiple sources with the following priority (highest first):
+1. Environment variables
+2. .env file
+3. config.yml settings section
+4. Default values
+
+This allows portable configuration in config.yml while keeping secrets in .env.
+"""
 
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
+import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings.sources import PydanticBaseSettingsSource
 
 
 # Load .env file at module import
 load_dotenv()
+
+
+class YamlSettingsSource(PydanticBaseSettingsSource):
+    """
+    Custom settings source that reads from config.yml settings section.
+
+    Allows configuration to be defined in YAML while still supporting
+    environment variable overrides.
+    """
+
+    def __init__(self, settings_cls: type[BaseSettings], yaml_file: Path):
+        super().__init__(settings_cls)
+        self.yaml_file = yaml_file
+        self._yaml_data: dict[str, Any] = {}
+        self._load_yaml()
+
+    def _load_yaml(self) -> None:
+        """Load and parse the YAML file."""
+        if not self.yaml_file.exists():
+            return
+
+        try:
+            with open(self.yaml_file, encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            settings_data = data.get("settings", {})
+            self._yaml_data = self._flatten_settings(settings_data)
+        except Exception:
+            # If YAML loading fails, silently fall back to defaults
+            pass
+
+    def _flatten_settings(self, data: dict, prefix: str = "") -> dict:
+        """
+        Flatten nested dict to match env var naming.
+
+        Example: jellyfin.url -> jellyfin_url
+        """
+        result = {}
+        for key, value in data.items():
+            flat_key = f"{prefix}_{key}" if prefix else key
+            if isinstance(value, dict):
+                result.update(self._flatten_settings(value, flat_key))
+            else:
+                result[flat_key] = value
+        return result
+
+    def get_field_value(
+        self, field: Any, field_name: str
+    ) -> tuple[Any, str, bool]:
+        """Get value for a specific field from YAML data."""
+        value = self._yaml_data.get(field_name)
+        return value, field_name, value is not None
+
+    def __call__(self) -> dict[str, Any]:
+        """Return all settings from YAML."""
+        return self._yaml_data
 
 
 class JellyfinSettings(BaseModel):
@@ -56,6 +122,10 @@ class OpenAISettings(BaseModel):
     force_regenerate: bool = Field(
         default=False,
         description="Force poster regeneration on every run (useful for testing)"
+    )
+    missing_only: bool = Field(
+        default=False,
+        description="Only generate posters that don't exist yet (skip existing)"
     )
     poster_history_limit: int = Field(
         default=5,
@@ -147,6 +217,7 @@ class Settings(BaseSettings):
     openai_enabled: bool = Field(default=False)
     openai_explicit_refs: bool = Field(default=False)
     openai_force_regenerate: bool = Field(default=False)
+    openai_missing_only: bool = Field(default=False)
     openai_poster_history_limit: int = Field(default=5)
     openai_prompt_history_limit: int = Field(default=10)
     openai_poster_logo_text: str = Field(default="NETFLEX")
@@ -190,6 +261,37 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        """
+        Customize settings sources to include config.yml.
+
+        Priority (highest first):
+        1. init_settings - direct arguments to Settings()
+        2. env_settings - environment variables
+        3. dotenv_settings - .env file
+        4. yaml_settings - config.yml settings section
+        5. file_secret_settings - secret files
+        """
+        # Determine config.yml path from env var (before other sources load)
+        config_path = Path(os.getenv("CONFIG_PATH", "./config"))
+        yaml_file = config_path / "config.yml"
+
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            YamlSettingsSource(settings_cls, yaml_file),
+            file_secret_settings,
+        )
 
     @field_validator("config_path", mode="before")
     @classmethod
@@ -270,6 +372,7 @@ class Settings(BaseSettings):
             enabled=self.openai_enabled,
             explicit_refs=self.openai_explicit_refs,
             force_regenerate=self.openai_force_regenerate,
+            missing_only=self.openai_missing_only,
             poster_history_limit=self.openai_poster_history_limit,
             prompt_history_limit=self.openai_prompt_history_limit,
             poster_logo_text=self.openai_poster_logo_text,

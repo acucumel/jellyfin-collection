@@ -52,36 +52,18 @@ services:
       - PUID=1000
       - PGID=1000
 
-      # Required
-      - JELLYFIN_URL=http://your-jellyfin-server:8096
-      - JELLYFIN_API_KEY=your_jellyfin_api_key
-      - TMDB_API_KEY=your_tmdb_api_key
+      # Secrets only - all other config is in config/config.yml
+      - JELLYFIN_API_KEY=${JELLYFIN_API_KEY}
+      - TMDB_API_KEY=${TMDB_API_KEY}
 
-      # Optional - Trakt (run 'jfc trakt-auth' after first start)
-      - TRAKT_CLIENT_ID=your_trakt_client_id
-      - TRAKT_CLIENT_SECRET=your_trakt_client_secret
-
-      # Optional - Radarr (auto-request missing movies)
-      - RADARR_URL=http://radarr:7878
-      - RADARR_API_KEY=your_radarr_api_key
-
-      # Optional - Sonarr (auto-request missing series)
-      - SONARR_URL=http://sonarr:8989
-      - SONARR_API_KEY=your_sonarr_api_key
-
-      # Optional - Discord notifications
-      - DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/xxx
-
-      # Optional - AI poster generation
-      - OPENAI_API_KEY=sk-xxx
-      - OPENAI_ENABLED=true
-
-      # Scheduler (default: daily at 3am)
-      - SCHEDULER_COLLECTIONS_CRON=0 3 * * *
-      - SCHEDULER_TIMEZONE=Europe/Paris
-      - SCHEDULER_RUN_ON_START=true
+      # Optional secrets
+      - TRAKT_CLIENT_ID=${TRAKT_CLIENT_ID:-}
+      - TRAKT_CLIENT_SECRET=${TRAKT_CLIENT_SECRET:-}
+      - RADARR_API_KEY=${RADARR_API_KEY:-}
+      - SONARR_API_KEY=${SONARR_API_KEY:-}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
     volumes:
-      - ./config:/config:ro    # Your Kometa YAML files
+      - ./config:/config:ro    # config.yml + collection YAML files
       - ./data:/data           # Generated data (posters, cache)
       - ./logs:/logs           # Application logs
     networks:
@@ -92,11 +74,42 @@ networks:
     external: true
 ```
 
-3. **Add your Kometa configuration files to `./config/`**
+> **Note:** All non-secret configuration (URLs, schedules, etc.) is now in `config/config.yml`.
 
-At minimum, create `config/config.yml`:
+3. **Create `config/config.yml`**
 
 ```yaml
+# Main configuration - secrets are in .env
+settings:
+  jellyfin:
+    url: http://your-jellyfin:8096
+
+  tmdb:
+    language: fr
+    region: FR
+
+  openai:
+    enabled: true
+    missing_only: true
+
+  radarr:
+    url: http://radarr:7878
+    root_folder: /movies
+    quality_profile: HD-1080p
+
+  sonarr:
+    url: http://sonarr:8989
+    root_folder: /tv
+    quality_profile: HD-1080p
+
+  discord:
+    webhook_url: https://discord.com/api/webhooks/xxx
+
+  scheduler:
+    collections_cron: "0 17 * * *"
+    run_on_start: true
+    timezone: Europe/Paris
+
 libraries:
   Films:
     collection_files:
@@ -106,7 +119,7 @@ libraries:
       - file: Series.yml
 ```
 
-And a collection file like `config/Films.yml`:
+4. **Create a collection file like `config/Films.yml`**
 
 ```yaml
 collections:
@@ -116,13 +129,13 @@ collections:
     schedule: daily
 ```
 
-4. **Start the container**
+5. **Start the container**
 
 ```bash
 docker-compose up -d
 ```
 
-5. **View logs**
+6. **View logs**
 
 ```bash
 docker-compose logs -f

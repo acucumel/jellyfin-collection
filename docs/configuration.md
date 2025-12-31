@@ -4,105 +4,158 @@ Complete reference for all JFC configuration options.
 
 ## Table of Contents
 
-- [Environment Variables](#environment-variables)
+- [Configuration System](#configuration-system)
+- [config.yml Reference](#configyml-reference)
+- [Secrets (.env)](#secrets-env)
 - [Kometa YAML Configuration](#kometa-yaml-configuration)
 - [Collection Builders](#collection-builders)
 - [Filters](#filters)
 - [Scheduling](#scheduling)
 
-## Environment Variables
+## Configuration System
 
-### Core Services (Required)
+JFC uses a **dual configuration system** for flexibility and security:
 
-| Variable | Description | Default | Example |
-|----------|-------------|---------|---------|
-| `JELLYFIN_URL` | Jellyfin server URL | - | `http://jellyfin:8096` |
-| `JELLYFIN_API_KEY` | Jellyfin API key | - | `abc123...` |
-| `TMDB_API_KEY` | TMDb API key | - | `e0293eb...` |
-| `TMDB_LANGUAGE` | TMDb language code | `fr` | `en`, `fr`, `de` |
-| `TMDB_REGION` | TMDb region code | `FR` | `US`, `FR`, `GB` |
+### Priority Order (highest first)
 
-### Radarr Integration (Optional)
+1. **Environment variables** - Override everything
+2. **`.env` file** - Secrets and local overrides
+3. **`config.yml` settings** - Main configuration
+4. **Default values** - Fallback
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `RADARR_URL` | Radarr server URL | `http://localhost:7878` |
-| `RADARR_API_KEY` | Radarr API key | - |
-| `RADARR_ROOT_FOLDER` | Root folder for movies | `/movies` |
-| `RADARR_QUALITY_PROFILE` | Quality profile name | `HD-1080p` |
-| `RADARR_DEFAULT_TAG` | Tag for added movies | `jfc` |
+### Benefits
 
-### Sonarr Integration (Optional)
+- **Portable** - Share `config.yml` without exposing secrets
+- **Versionable** - Commit configuration to Git
+- **Docker-friendly** - Minimal environment variables needed
+- **Backward compatible** - Existing `.env` configs still work
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SONARR_URL` | Sonarr server URL | `http://localhost:8989` |
-| `SONARR_API_KEY` | Sonarr API key | - |
-| `SONARR_ROOT_FOLDER` | Root folder for series | `/tv` |
-| `SONARR_QUALITY_PROFILE` | Quality profile name | `HD-1080p` |
-| `SONARR_DEFAULT_TAG` | Tag for added series | `jfc` |
+## config.yml Reference
 
-### Trakt Integration (Optional)
+The `settings` section in `config/config.yml` contains all non-secret configuration:
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `TRAKT_CLIENT_ID` | Trakt application client ID | - |
-| `TRAKT_CLIENT_SECRET` | Trakt application client secret | - |
+```yaml
+settings:
+  # ---------------------------------------------------------------------------
+  # JELLYFIN
+  # ---------------------------------------------------------------------------
+  jellyfin:
+    url: http://jellyfin:8096
+    # api_key: in .env (secret)
 
-**Note:** Access tokens are managed automatically. Run `jfc trakt-auth` to authenticate via OAuth Device Code flow. Tokens are stored securely in `/data/trakt_tokens.json` and refreshed automatically when expired.
+  # ---------------------------------------------------------------------------
+  # TMDB
+  # ---------------------------------------------------------------------------
+  tmdb:
+    language: fr          # ISO 639-1 language code
+    region: FR            # ISO 3166-1 country code
+    # api_key: in .env (secret)
 
-#### Trakt Authentication Commands
+  # ---------------------------------------------------------------------------
+  # OPENAI (AI Poster Generation)
+  # ---------------------------------------------------------------------------
+  openai:
+    enabled: true                 # Enable AI posters
+    explicit_refs: false          # Include titles in visual signatures
+    force_regenerate: false       # Regenerate all posters on every run
+    missing_only: true            # Default for CLI 'regenerate-posters' command
+    poster_history_limit: 5       # Keep N old posters (0=unlimited)
+    prompt_history_limit: 10      # Keep N prompt files (0=unlimited)
+    poster_logo_text: "NETFLEX"   # Logo text on generated posters
+    # api_key: in .env (secret)
+    # Note: Scheduled poster job always forces regeneration regardless of missing_only
+
+  # ---------------------------------------------------------------------------
+  # RADARR (Movies)
+  # ---------------------------------------------------------------------------
+  radarr:
+    url: http://radarr:7878
+    root_folder: /movies
+    quality_profile: HD-1080p
+    default_tag: jfc
+    # api_key: in .env (secret)
+
+  # ---------------------------------------------------------------------------
+  # SONARR (Series)
+  # ---------------------------------------------------------------------------
+  sonarr:
+    url: http://sonarr:8989
+    root_folder: /tv
+    quality_profile: HD-1080p
+    default_tag: jfc
+    # api_key: in .env (secret)
+
+  # ---------------------------------------------------------------------------
+  # DISCORD (Webhooks)
+  # ---------------------------------------------------------------------------
+  discord:
+    webhook_url: ""              # Main webhook
+    webhook_error: ""            # Errors (falls back to main)
+    webhook_run_start: ""        # Run start notifications
+    webhook_run_end: ""          # Run end notifications
+    webhook_changes: ""          # Collection changes
+
+  # ---------------------------------------------------------------------------
+  # SCHEDULER
+  # ---------------------------------------------------------------------------
+  scheduler:
+    collections_cron: "0 3 * * *"    # Daily at 3am
+    posters_cron: "0 4 1 * *"        # 1st of month at 4am
+    run_on_start: true               # Sync on container start
+    timezone: Europe/Paris           # Timezone for cron
+
+  # ---------------------------------------------------------------------------
+  # APPLICATION
+  # ---------------------------------------------------------------------------
+  log_level: INFO                    # DEBUG, INFO, WARNING, ERROR
+  dry_run: false                     # Preview mode (no changes)
+```
+
+## Secrets (.env)
+
+Only API keys and secrets should be in `.env`:
 
 ```bash
-# Authenticate with Trakt (interactive - shows code to enter on trakt.tv)
+# =============================================================================
+# SECRETS ONLY - Configuration is in config.yml
+# =============================================================================
+
+# Required
+JELLYFIN_API_KEY=your_jellyfin_api_key
+TMDB_API_KEY=your_tmdb_api_key
+
+# Optional - Trakt
+TRAKT_CLIENT_ID=
+TRAKT_CLIENT_SECRET=
+
+# Optional - Radarr/Sonarr
+RADARR_API_KEY=
+SONARR_API_KEY=
+
+# Optional - OpenAI
+OPENAI_API_KEY=
+
+# Optional - Overrides (uncomment to override config.yml)
+# OPENAI_ENABLED=false
+# SCHEDULER_TIMEZONE=UTC
+```
+
+### Trakt Authentication
+
+Trakt tokens are managed automatically:
+
+```bash
+# Authenticate (interactive)
 jfc trakt-auth
 
-# Check authentication status
+# Check status
 jfc trakt-status
 
-# Logout and revoke tokens
+# Logout
 jfc trakt-logout
 ```
 
-### Discord Notifications (Optional)
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DISCORD_WEBHOOK_URL` | Default webhook URL | - |
-| `DISCORD_WEBHOOK_ERROR` | Webhook for errors | Falls back to default |
-| `DISCORD_WEBHOOK_RUN_START` | Webhook for run start | Falls back to default |
-| `DISCORD_WEBHOOK_RUN_END` | Webhook for run end | Falls back to default |
-| `DISCORD_WEBHOOK_CHANGES` | Webhook for collection updates | Falls back to default |
-
-### OpenAI / AI Posters (Optional)
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `OPENAI_API_KEY` | OpenAI API key | - |
-| `OPENAI_ENABLED` | Enable AI poster generation | `false` |
-| `OPENAI_EXPLICIT_REFS` | Include titles in visual signatures | `false` |
-| `OPENAI_FORCE_REGENERATE` | Force regenerate posters on every run | `false` |
-| `OPENAI_POSTER_HISTORY_LIMIT` | Keep N old posters | `5` |
-| `OPENAI_PROMPT_HISTORY_LIMIT` | Keep N prompt files | `10` |
-| `OPENAI_POSTER_LOGO_TEXT` | Logo text on posters | `NETFLEX` |
-
-### Scheduler
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `SCHEDULER_COLLECTIONS_CRON` | Cron for daily sync | `0 3 * * *` |
-| `SCHEDULER_POSTERS_CRON` | Cron for poster regen | `0 4 1 * *` |
-| `SCHEDULER_RUN_ON_START` | Sync on startup | `true` |
-| `SCHEDULER_TIMEZONE` | Timezone for cron | `Europe/Paris` |
-
-### Application
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `LOG_LEVEL` | Logging level | `INFO` |
-| `DRY_RUN` | Preview mode | `false` |
-
-**Note:** Paths are fixed for Docker: `/config` (read-only), `/data`, `/logs`. Use bind mounts in your docker-compose.yml.
+Tokens are stored in `/data/trakt_tokens.json` and refreshed automatically.
 
 ## Kometa YAML Configuration
 
@@ -115,11 +168,15 @@ JFC uses the same YAML format as Kometa/Plex Meta Manager.
 libraries:
   Films:                          # Must match Jellyfin library name
     collection_files:
-      - file: config/Films.yml    # Path to collection definitions
+      - file: Films.yml           # Path to collection definitions
 
   Séries:
     collection_files:
-      - file: config/Series.yml
+      - file: Series.yml
+    # Library-specific Sonarr overrides
+    sonarr:
+      tag: sonarr-series
+      root_folder_path: /tv
 ```
 
 ### Collection File Example
@@ -276,11 +333,12 @@ collections:
 
 ### Cron Expressions
 
-For the scheduler daemon:
+For the scheduler daemon (in `config.yml`):
 
 | Expression | Meaning |
 |------------|---------|
 | `0 3 * * *` | Daily at 3:00 AM |
+| `0 17 * * *` | Daily at 5:00 PM |
 | `0 */6 * * *` | Every 6 hours |
 | `0 4 1 * *` | 1st of month at 4:00 AM |
 | `0 3 * * 0` | Every Sunday at 3:00 AM |
@@ -288,8 +346,8 @@ For the scheduler daemon:
 ## Data Directories
 
 ```
-/config/                    # Configuration (read-only)
-├── config.yml              # Main config
+/config/                    # Configuration (read-only in Docker)
+├── config.yml              # Main config + settings
 ├── Films.yml               # Movie collections
 └── Series.yml              # Series collections
 
@@ -302,6 +360,7 @@ For the scheduler daemon:
 │           └── prompts/
 ├── cache/                  # API cache
 │   └── visual_signatures_cache.json
+├── trakt_tokens.json       # Trakt OAuth tokens
 └── reports/                # Run reports
     └── report_xxx.md
 

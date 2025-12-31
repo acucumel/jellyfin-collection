@@ -4,13 +4,8 @@
 # Utiliser avec Portainer Stacks + GitHub integration
 # Image: ghcr.io/acucumel/jellyfin-collection:latest
 #
-# Variables à configurer dans Portainer:
-# - JELLYFIN_URL, JELLYFIN_API_KEY
-# - TMDB_API_KEY
-# - RADARR_URL, RADARR_API_KEY (optionnel)
-# - SONARR_URL, SONARR_API_KEY (optionnel)
-# - DISCORD_WEBHOOK_URL (optionnel)
-# - OPENAI_API_KEY, OPENAI_ENABLED (optionnel)
+# Configuration principale dans config/config.yml (monté en volume)
+# Variables à configurer dans Portainer: seulement les API keys (secrets)
 # =============================================================================
 
 services:
@@ -27,80 +22,36 @@ services:
       - PGID=${PGID:-1000}
 
       # =========================================================================
-      # JELLYFIN (requis)
+      # SECRETS UNIQUEMENT
       # =========================================================================
-      - JELLYFIN_URL=${JELLYFIN_URL:?JELLYFIN_URL is required}
+      # La configuration (URLs, schedules, etc.) est dans config/config.yml
+      # Seuls les secrets (API keys) sont passés en variables d'environnement
+
+      # Jellyfin (requis)
       - JELLYFIN_API_KEY=${JELLYFIN_API_KEY:?JELLYFIN_API_KEY is required}
 
-      # =========================================================================
-      # TMDB (requis)
-      # =========================================================================
+      # TMDb (requis)
       - TMDB_API_KEY=${TMDB_API_KEY:?TMDB_API_KEY is required}
-      - TMDB_LANGUAGE=${TMDB_LANGUAGE:-fr}
-      - TMDB_REGION=${TMDB_REGION:-FR}
 
-      # =========================================================================
-      # TRAKT (optionnel - tokens gérés via jfc trakt-auth)
-      # =========================================================================
+      # Trakt (optionnel - tokens gérés automatiquement via jfc trakt-auth)
       - TRAKT_CLIENT_ID=${TRAKT_CLIENT_ID:-}
       - TRAKT_CLIENT_SECRET=${TRAKT_CLIENT_SECRET:-}
 
-      # =========================================================================
-      # RADARR (optionnel - ajout films manquants)
-      # =========================================================================
-      - RADARR_URL=${RADARR_URL:-}
+      # Radarr (optionnel)
       - RADARR_API_KEY=${RADARR_API_KEY:-}
-      - RADARR_ROOT_FOLDER=${RADARR_ROOT_FOLDER:-/movies}
-      - RADARR_QUALITY_PROFILE=${RADARR_QUALITY_PROFILE:-HD-1080p}
-      - RADARR_DEFAULT_TAG=${RADARR_DEFAULT_TAG:-jfc}
 
-      # =========================================================================
-      # SONARR (optionnel - ajout séries manquantes)
-      # =========================================================================
-      - SONARR_URL=${SONARR_URL:-}
+      # Sonarr (optionnel)
       - SONARR_API_KEY=${SONARR_API_KEY:-}
-      - SONARR_ROOT_FOLDER=${SONARR_ROOT_FOLDER:-/tv}
-      - SONARR_QUALITY_PROFILE=${SONARR_QUALITY_PROFILE:-HD-1080p}
-      - SONARR_DEFAULT_TAG=${SONARR_DEFAULT_TAG:-jfc}
 
-      # =========================================================================
-      # DISCORD (optionnel - notifications)
-      # =========================================================================
-      - DISCORD_WEBHOOK_URL=${DISCORD_WEBHOOK_URL:-}
-      - DISCORD_WEBHOOK_CHANGES=${DISCORD_WEBHOOK_CHANGES:-}
-
-      # =========================================================================
-      # OPENAI (optionnel - génération de posters IA)
-      # =========================================================================
+      # OpenAI (optionnel - génération de posters IA)
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - OPENAI_ENABLED=${OPENAI_ENABLED:-false}
-      - OPENAI_FORCE_REGENERATE=${OPENAI_FORCE_REGENERATE:-false}
-      - OPENAI_POSTER_HISTORY_LIMIT=${OPENAI_POSTER_HISTORY_LIMIT:-5}
-      - OPENAI_POSTER_LOGO_TEXT=${OPENAI_POSTER_LOGO_TEXT:-NETFLEX}
-
-      # =========================================================================
-      # SCHEDULER
-      # =========================================================================
-      # Sync collections: tous les jours à 3h
-      - SCHEDULER_COLLECTIONS_CRON=${SCHEDULER_COLLECTIONS_CRON:-0 3 * * *}
-      # Régénération posters: 1er du mois à 4h (vide = désactivé)
-      - SCHEDULER_POSTERS_CRON=${SCHEDULER_POSTERS_CRON:-0 4 1 * *}
-      # Sync au démarrage
-      - SCHEDULER_RUN_ON_START=${SCHEDULER_RUN_ON_START:-true}
-      - SCHEDULER_TIMEZONE=${SCHEDULER_TIMEZONE:-Europe/Paris}
-
-      # =========================================================================
-      # APPLICATION
-      # =========================================================================
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - DRY_RUN=${DRY_RUN:-false}
 
     volumes:
-      # Configurations Kometa (YAML) - lecture seule
+      # config.yml + fichiers YAML collections (lecture seule)
       - ${JFC_CONFIG_DIR:-./config}:/config:ro
-      # Données persistantes (cache, posters, reports)
+      # Données persistantes (posters, cache, reports, tokens Trakt)
       - ${JFC_DATA_DIR:-./data}:/data
-      # Logs
+      # Logs applicatifs
       - ${JFC_LOGS_DIR:-./logs}:/logs
 
     # Réseau (adapter selon votre configuration)

@@ -192,6 +192,7 @@ class CollectionBuilder:
         media_type: MediaType = MediaType.MOVIE,
         add_missing_to_arr: bool = True,
         force_poster: bool = False,
+        posters_only: bool = False,
     ) -> tuple[int, int, Optional[Path]]:
         """
         Sync collection to Jellyfin.
@@ -202,6 +203,7 @@ class CollectionBuilder:
             media_type: Type of media (for poster category)
             add_missing_to_arr: Whether to add missing items to Radarr/Sonarr
             force_poster: Force regeneration of AI poster
+            posters_only: Only generate/upload poster, skip item sync
 
         Returns:
             Tuple of (items_added, items_removed, poster_path)
@@ -226,79 +228,84 @@ class CollectionBuilder:
                 collection.config.name
             )
 
-        # Get current items in collection
-        current_ids = set(await self.jellyfin.get_collection_items(collection.jellyfin_id))
+        to_add: set[str] = set()
+        to_remove: set[str] = set()
 
-        # Sort items according to collection_order
-        sorted_items = self._sort_items_for_collection(
-            collection.items,
-            collection.config.collection_order,
-        )
+        # Skip item sync if posters_only mode
+        if not posters_only:
+            # Get current items in collection
+            current_ids = set(await self.jellyfin.get_collection_items(collection.jellyfin_id))
 
-        # Get target items in sorted order (only matched ones)
-        target_ids_list = [
-            item.jellyfin_id for item in sorted_items if item.jellyfin_id
-        ]
-        target_ids = set(target_ids_list)
+            # Sort items according to collection_order
+            sorted_items = self._sort_items_for_collection(
+                collection.items,
+                collection.config.collection_order,
+            )
 
-        # Calculate changes
-        to_add = target_ids - current_ids
-        to_remove = current_ids - target_ids
+            # Get target items in sorted order (only matched ones)
+            target_ids_list = [
+                item.jellyfin_id for item in sorted_items if item.jellyfin_id
+            ]
+            target_ids = set(target_ids_list)
 
-        # Track added/removed titles for report
-        added_jellyfin_ids = to_add
-        for item in collection.items:
-            if item.jellyfin_id in added_jellyfin_ids:
-                report.added_titles.append(item.title)
+            # Calculate changes
+            to_add = target_ids - current_ids
+            to_remove = current_ids - target_ids
 
-        # Determine if we need to reorder (clear and re-add all)
-        # Jellyfin displays items in the order they were added
-        needs_reorder = (
-            collection.config.collection_order != CollectionOrder.CUSTOM
-            and (to_add or to_remove or not existing)
-        )
+            # Track added/removed titles for report
+            added_jellyfin_ids = to_add
+            for item in collection.items:
+                if item.jellyfin_id in added_jellyfin_ids:
+                    report.added_titles.append(item.title)
 
-        if needs_reorder and target_ids_list:
-            # Clear all items and re-add in sorted order
-            if current_ids:
-                await self.jellyfin.remove_from_collection(
-                    collection.jellyfin_id, list(current_ids)
+            # Determine if we need to reorder (clear and re-add all)
+            # Jellyfin displays items in the order they were added
+            needs_reorder = (
+                collection.config.collection_order != CollectionOrder.CUSTOM
+                and (to_add or to_remove or not existing)
+            )
+
+            if needs_reorder and target_ids_list:
+                # Clear all items and re-add in sorted order
+                if current_ids:
+                    await self.jellyfin.remove_from_collection(
+                        collection.jellyfin_id, list(current_ids)
+                    )
+                await self.jellyfin.add_to_collection(
+                    collection.jellyfin_id, target_ids_list
                 )
-            await self.jellyfin.add_to_collection(
-                collection.jellyfin_id, target_ids_list
+                logger.info(
+                    f"Reordered '{collection.config.name}' ({len(target_ids_list)} items, "
+                    f"order={collection.config.collection_order.value})"
+                )
+            else:
+                # Simple add/remove (no reordering needed)
+                if to_add:
+                    await self.jellyfin.add_to_collection(collection.jellyfin_id, list(to_add))
+                    logger.info(f"Added {len(to_add)} items to '{collection.config.name}'")
+
+                if to_remove:
+                    await self.jellyfin.remove_from_collection(collection.jellyfin_id, list(to_remove))
+                    logger.info(f"Removed {len(to_remove)} items from '{collection.config.name}'")
+
+            # Update report
+            report.items_added_to_collection = len(to_add)
+            report.items_removed_from_collection = len(to_remove)
+
+            # Update metadata (including DisplayOrder for Jellyfin sorting)
+            display_order = self._get_jellyfin_display_order(collection.config.collection_order)
+            await self.jellyfin.update_collection_metadata(
+                collection.jellyfin_id,
+                overview=collection.config.summary,
+                sort_name=collection.config.sort_title,
+                display_order=display_order,
             )
-            logger.info(
-                f"Reordered '{collection.config.name}' ({len(target_ids_list)} items, "
-                f"order={collection.config.collection_order.value})"
-            )
-        else:
-            # Simple add/remove (no reordering needed)
-            if to_add:
-                await self.jellyfin.add_to_collection(collection.jellyfin_id, list(to_add))
-                logger.info(f"Added {len(to_add)} items to '{collection.config.name}'")
-
-            if to_remove:
-                await self.jellyfin.remove_from_collection(collection.jellyfin_id, list(to_remove))
-                logger.info(f"Removed {len(to_remove)} items from '{collection.config.name}'")
-
-        # Update report
-        report.items_added_to_collection = len(to_add)
-        report.items_removed_from_collection = len(to_remove)
-
-        # Update metadata (including DisplayOrder for Jellyfin sorting)
-        display_order = self._get_jellyfin_display_order(collection.config.collection_order)
-        await self.jellyfin.update_collection_metadata(
-            collection.jellyfin_id,
-            overview=collection.config.summary,
-            sort_name=collection.config.sort_title,
-            display_order=display_order,
-        )
 
         # Upload poster (manual or AI-generated)
         _, poster_path = await self._upload_poster(collection, media_type, force_regenerate=force_poster)
 
         # Add missing items to Radarr/Sonarr
-        if add_missing_to_arr:
+        if add_missing_to_arr and not posters_only:
             radarr_count, sonarr_count = await self._add_missing_to_arr(collection, report)
             report.items_sent_to_radarr = radarr_count
             report.items_sent_to_sonarr = sonarr_count

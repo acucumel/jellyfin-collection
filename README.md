@@ -65,25 +65,52 @@ jfc run --config ./config
 
 ## Configuration Overview
 
-### Required Environment Variables
+JFC uses a **dual configuration system** for flexibility:
+
+- **`config.yml`** - Main configuration (portable, versionable)
+- **`.env`** - Secrets and overrides only
+
+### Secrets (.env)
 
 | Variable | Description |
 |----------|-------------|
-| `JELLYFIN_URL` | Jellyfin server URL (e.g., `http://jellyfin:8096`) |
 | `JELLYFIN_API_KEY` | Jellyfin API key |
 | `TMDB_API_KEY` | TMDb API key ([get one here](https://www.themoviedb.org/settings/api)) |
 
-### Optional Integrations
+### Optional Secrets
 
-| Service | Variables | Description |
-|---------|-----------|-------------|
-| Radarr | `RADARR_URL`, `RADARR_API_KEY` | Auto-request missing movies |
-| Sonarr | `SONARR_URL`, `SONARR_API_KEY` | Auto-request missing series |
+| Service | Variable | Description |
+|---------|----------|-------------|
+| Radarr | `RADARR_API_KEY` | Auto-request missing movies |
+| Sonarr | `SONARR_API_KEY` | Auto-request missing series |
 | Trakt | `TRAKT_CLIENT_ID`, `TRAKT_CLIENT_SECRET` | Trakt lists and charts |
-| Discord | `DISCORD_WEBHOOK_URL` | Rich notifications with posters |
-| OpenAI | `OPENAI_API_KEY`, `OPENAI_ENABLED=true` | AI poster generation |
+| OpenAI | `OPENAI_API_KEY` | AI poster generation |
 
-See [.env.example](.env.example) for all configuration options.
+### Configuration (config.yml)
+
+All other settings are in `config/config.yml`:
+
+```yaml
+settings:
+  jellyfin:
+    url: http://jellyfin:8096
+  tmdb:
+    language: fr
+    region: FR
+  openai:
+    enabled: true
+    missing_only: true
+  scheduler:
+    collections_cron: "0 17 * * *"
+    timezone: Europe/Paris
+
+libraries:
+  Films:
+    collection_files:
+      - file: Films.yml
+```
+
+See [Configuration Guide](docs/configuration.md) for full reference.
 
 ## CLI Commands
 
