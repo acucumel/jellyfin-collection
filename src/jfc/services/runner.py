@@ -135,6 +135,7 @@ class Runner:
         libraries: Optional[list[str]] = None,
         collections: Optional[list[str]] = None,
         scheduled: bool = False,
+        force_posters: bool = False,
     ) -> RunReport:
         """
         Run collection updates.
@@ -143,6 +144,7 @@ class Runner:
             libraries: Optional list of library names to process
             collections: Optional list of collection names to process
             scheduled: Whether this is a scheduled run
+            force_posters: Force regeneration of all posters
 
         Returns:
             RunReport with detailed statistics
@@ -240,6 +242,7 @@ class Runner:
                         report=col_report,
                         media_type=media_type,
                         add_missing_to_arr=True,
+                        force_poster=force_posters,
                     )
 
                     col_report.success = True

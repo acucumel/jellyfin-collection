@@ -40,6 +40,9 @@ def run(
     config_path: Optional[Path] = typer.Option(
         None, "--config", help="Path to Kometa config directory"
     ),
+    force_posters: bool = typer.Option(
+        False, "--force-posters", "-fp", help="Force regeneration of all posters"
+    ),
 ) -> None:
     """Run collection updates."""
     settings = get_settings()
@@ -62,6 +65,7 @@ def run(
                 libraries=libraries,
                 collections=collections,
                 scheduled=False,
+                force_posters=force_posters,
             )
             console.print(
                 f"\n[green]Completed![/green] "

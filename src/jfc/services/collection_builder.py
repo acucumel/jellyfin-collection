@@ -173,6 +173,7 @@ class CollectionBuilder:
         report: CollectionReport,
         media_type: MediaType = MediaType.MOVIE,
         add_missing_to_arr: bool = True,
+        force_poster: bool = False,
     ) -> tuple[int, int]:
         """
         Sync collection to Jellyfin.
@@ -182,6 +183,7 @@ class CollectionBuilder:
             report: Collection report to update with sync info
             media_type: Type of media (for poster category)
             add_missing_to_arr: Whether to add missing items to Radarr/Sonarr
+            force_poster: Force regeneration of AI poster
 
         Returns:
             Tuple of (items_added, items_removed)
@@ -275,7 +277,7 @@ class CollectionBuilder:
         )
 
         # Upload poster (manual or AI-generated)
-        await self._upload_poster(collection, media_type)
+        await self._upload_poster(collection, media_type, force_regenerate=force_poster)
 
         # Add missing items to Radarr/Sonarr
         if add_missing_to_arr:
@@ -658,6 +660,7 @@ class CollectionBuilder:
         self,
         collection: Collection,
         media_type: MediaType,
+        force_regenerate: bool = False,
     ) -> bool:
         """
         Upload poster image for collection if configured.
@@ -668,6 +671,7 @@ class CollectionBuilder:
         Args:
             collection: Collection with poster config
             media_type: Type of media (for AI category mapping)
+            force_regenerate: Force regeneration of AI poster
 
         Returns:
             True if poster was uploaded successfully
@@ -678,11 +682,29 @@ class CollectionBuilder:
         settings = get_settings()
         poster_path = None
 
-        # 1. Check for manually configured poster
-        if collection.config.poster:
+        # 1. Force regenerate with AI if requested and enabled
+        if force_regenerate and self.poster_generator and settings.openai.enabled:
+            # Map media type to category
+            category = self._get_poster_category(collection.library_name, media_type)
+
+            # Convert collection items back to MediaItems for context
+            media_items = self._collection_items_to_media_items(collection.items)
+
+            logger.info(f"Force regenerating AI poster for '{collection.config.name}'...")
+            poster_path = await self.poster_generator.generate_poster(
+                config=collection.config,
+                items=media_items,
+                category=category,
+                force_regenerate=True,
+            )
+            if poster_path:
+                logger.success(f"Generated AI poster: {poster_path.name}")
+
+        # 2. Check for manually configured poster
+        elif collection.config.poster:
             poster_path = settings.get_posters_path() / collection.config.poster
 
-        # 2. If no manual poster and AI generation enabled, generate one
+        # 3. If no manual poster and AI generation enabled, generate one
         elif self.poster_generator and settings.openai.enabled:
             # Map media type to category
             category = self._get_poster_category(collection.library_name, media_type)
@@ -695,7 +717,7 @@ class CollectionBuilder:
                 config=collection.config,
                 items=media_items,
                 category=category,
-                force_regenerate=False,  # Don't regenerate if exists
+                force_regenerate=False,
             )
             if poster_path:
                 logger.success(f"Generated AI poster: {poster_path.name}")
