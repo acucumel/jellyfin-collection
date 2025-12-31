@@ -26,6 +26,66 @@ if sys.platform == "win32":
 console = Console(force_terminal=True)
 
 
+async def ensure_trakt_auth(settings) -> bool:
+    """
+    Ensure Trakt is authenticated if configured.
+
+    Automatically starts device code flow if not authenticated.
+    Returns True if authenticated (or Trakt not configured), False if auth failed.
+    """
+    if not settings.trakt.client_id or not settings.trakt.client_secret:
+        return True  # Trakt not configured, nothing to do
+
+    from jfc.services.trakt_auth import TraktAuth
+
+    auth = TraktAuth(
+        client_id=settings.trakt.client_id,
+        client_secret=settings.trakt.client_secret,
+        data_dir=settings.get_data_path(),
+    )
+
+    # Try to get valid token (auto-refresh if expired)
+    access_token = await auth.get_valid_token()
+
+    if access_token:
+        return True  # Already authenticated
+
+    # Not authenticated - start device code flow
+    console.print()
+    console.print("[yellow]Trakt is configured but not authenticated.[/yellow]")
+    console.print("[cyan]Starting automatic authentication...[/cyan]")
+    console.print()
+
+    def on_code_received(user_code: str, verification_url: str, expires_in: int):
+        console.print("[cyan]═══════════════════════════════════════════════════════════[/cyan]")
+        console.print("[cyan]                    TRAKT AUTHENTICATION                   [/cyan]")
+        console.print("[cyan]═══════════════════════════════════════════════════════════[/cyan]")
+        console.print()
+        console.print(f"  1. Go to: [link={verification_url}]{verification_url}[/link]")
+        console.print()
+        console.print(f"  2. Enter code: [bold yellow]{user_code}[/bold yellow]")
+        console.print()
+        console.print(f"  [dim]Code expires in {expires_in // 60} minutes[/dim]")
+        console.print()
+        console.print("[cyan]═══════════════════════════════════════════════════════════[/cyan]")
+        console.print()
+        console.print("[dim]Waiting for authorization...[/dim]")
+
+    tokens = await auth.device_code_flow(on_code_received=on_code_received)
+
+    if tokens:
+        console.print()
+        console.print("[green]✓ Successfully authenticated with Trakt![/green]")
+        console.print()
+        return True
+    else:
+        console.print()
+        console.print("[red]✗ Trakt authentication failed[/red]")
+        console.print("[yellow]Continuing without Trakt...[/yellow]")
+        console.print()
+        return False
+
+
 @app.command()
 def run(
     libraries: Optional[list[str]] = typer.Option(
@@ -59,6 +119,9 @@ def run(
     from jfc.services.runner import Runner
 
     async def _run():
+        # Ensure Trakt is authenticated if configured
+        await ensure_trakt_auth(settings)
+
         runner = Runner(settings)
         try:
             report = await runner.run(
@@ -124,6 +187,9 @@ def schedule(
 
     async def _run_scheduler():
         """Main async scheduler loop."""
+        # Ensure Trakt is authenticated if configured (at startup)
+        await ensure_trakt_auth(settings)
+
         # Schedule collection sync job
         scheduler.add_cron_job(
             name="collection_sync",
