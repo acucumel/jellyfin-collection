@@ -9,7 +9,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from jfc.core.config import get_settings
+from jfc.core.config import get_settings, log_settings
 from jfc.core.logger import setup_logging
 from jfc.core.scheduler import Scheduler
 
@@ -116,6 +116,9 @@ def run(
     log_dir = settings.get_log_path()
     setup_logging(level=settings.log_level, log_dir=log_dir)
 
+    # Log configuration at startup
+    log_settings(settings)
+
     from jfc.services.runner import Runner
 
     async def _run():
@@ -157,6 +160,9 @@ def schedule(
     settings = get_settings()
     log_dir = settings.get_log_path()
     setup_logging(level=settings.log_level, log_dir=log_dir)
+
+    # Log configuration at startup
+    log_settings(settings)
 
     from loguru import logger
     from jfc.services.runner import Runner

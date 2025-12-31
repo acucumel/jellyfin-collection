@@ -422,6 +422,89 @@ class Settings(BaseSettings):
         )
 
 
+def _mask_secret(value: str | None, visible_chars: int = 4) -> str:
+    """Mask a secret value, showing only first N characters."""
+    if not value:
+        return "(not set)"
+    if len(value) <= visible_chars:
+        return "*" * len(value)
+    return value[:visible_chars] + "*" * (len(value) - visible_chars)
+
+
+def log_settings(settings: "Settings") -> None:
+    """Log all settings to the logger (secrets are masked)."""
+    from loguru import logger
+
+    logger.info("=" * 60)
+    logger.info("JELLYFIN COLLECTION - CONFIGURATION")
+    logger.info("=" * 60)
+
+    # Paths
+    logger.info("[Paths]")
+    logger.info(f"  Config path: {settings.config_path}")
+    logger.info(f"  Data path:   {settings.data_path}")
+    logger.info(f"  Log path:    {settings.log_path}")
+
+    # Jellyfin
+    logger.info("[Jellyfin]")
+    logger.info(f"  URL:     {settings.jellyfin_url}")
+    logger.info(f"  API Key: {_mask_secret(settings.jellyfin_api_key)}")
+
+    # TMDb
+    logger.info("[TMDb]")
+    logger.info(f"  API Key:  {_mask_secret(settings.tmdb_api_key)}")
+    logger.info(f"  Language: {settings.tmdb_language}")
+    logger.info(f"  Region:   {settings.tmdb_region}")
+
+    # Trakt
+    logger.info("[Trakt]")
+    logger.info(f"  Client ID:     {_mask_secret(settings.trakt_client_id)}")
+    logger.info(f"  Client Secret: {_mask_secret(settings.trakt_client_secret)}")
+
+    # OpenAI
+    logger.info("[OpenAI]")
+    logger.info(f"  Enabled:        {settings.openai_enabled}")
+    logger.info(f"  API Key:        {_mask_secret(settings.openai_api_key)}")
+    logger.info(f"  Explicit Refs:  {settings.openai_explicit_refs}")
+    logger.info(f"  Force Regen:    {settings.openai_force_regenerate}")
+    logger.info(f"  Missing Only:   {settings.openai_missing_only}")
+    logger.info(f"  Logo Text:      {settings.openai_poster_logo_text}")
+
+    # Radarr
+    logger.info("[Radarr]")
+    logger.info(f"  URL:             {settings.radarr_url}")
+    logger.info(f"  API Key:         {_mask_secret(settings.radarr_api_key)}")
+    logger.info(f"  Root Folder:     {settings.radarr_root_folder}")
+    logger.info(f"  Quality Profile: {settings.radarr_quality_profile}")
+    logger.info(f"  Default Tag:     {settings.radarr_default_tag}")
+
+    # Sonarr
+    logger.info("[Sonarr]")
+    logger.info(f"  URL:             {settings.sonarr_url}")
+    logger.info(f"  API Key:         {_mask_secret(settings.sonarr_api_key)}")
+    logger.info(f"  Root Folder:     {settings.sonarr_root_folder}")
+    logger.info(f"  Quality Profile: {settings.sonarr_quality_profile}")
+    logger.info(f"  Default Tag:     {settings.sonarr_default_tag}")
+
+    # Discord
+    logger.info("[Discord]")
+    logger.info(f"  Webhook URL: {_mask_secret(settings.discord_webhook_url, 30) if settings.discord_webhook_url else '(not set)'}")
+
+    # Scheduler
+    logger.info("[Scheduler]")
+    logger.info(f"  Collections Cron: {settings.scheduler_collections_cron}")
+    logger.info(f"  Posters Cron:     {settings.scheduler_posters_cron or '(disabled)'}")
+    logger.info(f"  Run on Start:     {settings.scheduler_run_on_start}")
+    logger.info(f"  Timezone:         {settings.scheduler_timezone}")
+
+    # Application
+    logger.info("[Application]")
+    logger.info(f"  Log Level: {settings.log_level}")
+    logger.info(f"  Dry Run:   {settings.dry_run}")
+
+    logger.info("=" * 60)
+
+
 @lru_cache
 def get_settings() -> Settings:
     """Get cached application settings."""
