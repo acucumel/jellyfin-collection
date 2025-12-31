@@ -4,7 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Jellyfin Collection (JFC)** is a Kometa-compatible collection manager for Jellyfin. It parses Kometa/Plex Meta Manager YAML configurations and creates collections directly in Jellyfin, with optional integration with Sonarr/Radarr to request missing media.
+**Jellyfin Collection (JFC)** is a Kometa-compatible collection manager for Jellyfin. It parses Kometa/Plex Meta Manager YAML configurations and creates collections directly in Jellyfin, with optional integration with Sonarr/Radarr to request missing media and AI-powered poster generation via OpenAI.
+
+### Key Features
+- **Kometa YAML compatibility** - Reuse existing PMM/Kometa configs
+- **Multiple data sources** - TMDb, Trakt, MDBList
+- **Sonarr/Radarr integration** - Auto-request missing media
+- **AI poster generation** - OpenAI-powered unique collection posters
+- **Rich Discord notifications** - Embeds with poster images
+- **Dual scheduler** - Daily sync + monthly poster regeneration
 
 ## Commands
 
@@ -14,23 +22,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Install dependencies
 pip install -e ".[dev]"
 
-# Run locally
+# Run collection sync
 python -m jfc.cli run --config ./config
 
-# Run with dry-run mode
+# Run specific library/collection
+python -m jfc.cli run --library Films --collection "Trending"
+
+# Dry-run mode (preview changes)
 python -m jfc.cli run --dry-run
+
+# Force poster regeneration
+python -m jfc.cli run --force-posters
 
 # Validate configuration
 python -m jfc.cli validate --config ./config
 
-# List all collections
-python -m jfc.cli list-collections --config ./config
-
 # Test service connections
 python -m jfc.cli test-connections
 
-# Start scheduler (daemon mode)
-python -m jfc.cli schedule --cron "0 3 * * *"
+# Start scheduler daemon
+python -m jfc.cli schedule
+
+# Generate single poster
+python -m jfc.cli generate-poster "Collection Name" --category FILMS --library Films
 ```
 
 ### Docker
@@ -45,8 +59,11 @@ docker-compose up -d
 # View logs
 docker-compose logs -f jellyfin-collection
 
-# Run single update
-docker-compose run --rm jellyfin-collection python -m jfc.cli run
+# Run single sync
+docker-compose exec jellyfin-collection jfc run
+
+# Force poster regeneration
+docker-compose exec jellyfin-collection jfc run --force-posters
 ```
 
 ### Code Quality
@@ -62,10 +79,10 @@ ruff check src/
 mypy src/
 
 # Run tests
-pytest
+pytest tests/
 
-# Run single test
-pytest tests/test_parsers.py::test_parse_collection -v
+# With coverage
+pytest --cov=jfc --cov-report=html
 ```
 
 ## Architecture
@@ -76,32 +93,37 @@ src/jfc/
 ├── core/                  # Core infrastructure
 │   ├── config.py          # Pydantic Settings (env vars)
 │   ├── logger.py          # Loguru setup
-│   └── scheduler.py       # APScheduler wrapper
+│   └── scheduler.py       # APScheduler wrapper (dual jobs)
 ├── models/                # Pydantic data models
 │   ├── collection.py      # Collection, CollectionConfig, filters
-│   └── media.py           # MediaItem, Movie, Series, LibraryItem
+│   ├── media.py           # MediaItem, Movie, Series, LibraryItem
+│   └── report.py          # CollectionReport, RunReport
 ├── clients/               # API clients (async httpx)
 │   ├── base.py            # BaseClient with common HTTP logic
-│   ├── jellyfin.py        # Jellyfin API (collections, libraries)
+│   ├── jellyfin.py        # Jellyfin API (collections, libraries, posters)
 │   ├── tmdb.py            # TMDb API (trending, discover, search)
 │   ├── trakt.py           # Trakt API (charts, lists)
 │   ├── radarr.py          # Radarr API v3 (add movies)
 │   ├── sonarr.py          # Sonarr API v3 (add series)
-│   └── discord.py         # Discord webhooks
+│   └── discord.py         # Discord webhooks with file attachments
 ├── parsers/
 │   └── kometa.py          # Kometa YAML config parser
 └── services/              # Business logic
-    ├── media_matcher.py   # Match provider items to Jellyfin library
-    ├── collection_builder.py  # Build collections from configs
-    └── runner.py          # Main orchestrator
+    ├── media_matcher.py       # Match provider items to Jellyfin
+    ├── collection_builder.py  # Build and sync collections
+    ├── poster_generator.py    # AI poster generation (OpenAI)
+    ├── report_generator.py    # Run reports
+    ├── startup.py             # Startup checks (connectivity, credits)
+    └── runner.py              # Main orchestrator
 ```
 
 ## Key Patterns
 
 ### Configuration
 - Uses `pydantic-settings` for environment variable parsing
-- Nested settings classes (JellyfinSettings, TMDbSettings, etc.)
+- Nested settings classes (JellyfinSettings, TMDbSettings, OpenAISettings, etc.)
 - All secrets via environment variables, never in code
+- Path separation: CONFIG_PATH, DATA_PATH, LOG_PATH for Docker
 
 ### Async HTTP Clients
 - All API clients inherit from `BaseClient`
@@ -111,7 +133,7 @@ src/jfc/
 ### Kometa Compatibility
 - Parser in `parsers/kometa.py` reads standard Kometa YAML
 - Supports templates, filters, tmdb_discover, trakt_chart
-- Collection schedules: daily, weekly(sunday), monthly
+- Collection schedules: daily, weekly(sunday), monthly, never
 
 ### Media Matching
 - `MediaMatcher` finds items in Jellyfin by TMDb ID (preferred) or title+year
@@ -122,49 +144,66 @@ src/jfc/
 - `CollectionBuilder.sync_collection()` calculates diff (add/remove)
 - Uses Jellyfin BoxSet API for collection management
 - Optional: sends missing items to Radarr/Sonarr
+- Uploads AI-generated or manual posters
+
+### AI Poster Generation
+- `PosterGenerator` uses OpenAI gpt-image-1 API
+- Builds visual signatures from collection items
+- Generates unique prompts per category (FILMS, SÉRIES, CARTOONS)
+- Maintains history with configurable retention
+
+### Discord Notifications
+- Rich embeds with poster image attachments
+- Unified item list showing matched/added/missing
+- Separate webhooks for different event types
 
 ## Environment Variables
 
-Required:
+### Required
 - `JELLYFIN_URL`, `JELLYFIN_API_KEY`
 - `TMDB_API_KEY`
 
-Optional providers:
-- `TRAKT_CLIENT_ID`, `TRAKT_CLIENT_SECRET`, `TRAKT_ACCESS_TOKEN`
+### Optional Integrations
+- `TRAKT_CLIENT_ID`, `TRAKT_CLIENT_SECRET`
 - `RADARR_URL`, `RADARR_API_KEY`
 - `SONARR_URL`, `SONARR_API_KEY`
-- `DISCORD_WEBHOOK_URL`
+- `DISCORD_WEBHOOK_URL`, `DISCORD_WEBHOOK_CHANGES`
+- `OPENAI_API_KEY`, `OPENAI_ENABLED=true`
+
+### Scheduler
+- `SCHEDULER_COLLECTIONS_CRON` - Daily sync (default: 0 3 * * *)
+- `SCHEDULER_POSTERS_CRON` - Monthly posters (default: 0 4 1 * *)
+- `SCHEDULER_RUN_ON_START` - Sync on startup (default: true)
+- `SCHEDULER_TIMEZONE` - Cron timezone (default: Europe/Paris)
 
 See `.env.example` for full list.
 
-## Kometa Config Format
+## Directory Structure
 
-The parser reads standard Kometa YAML files:
+```
+/config/                    # Kometa YAML configs (read-only in Docker)
+├── config.yml
+├── Films.yml
+└── Series.yml
 
-```yaml
-# config.yml
-libraries:
-  Films:
-    collection_files:
-    - file: config/Films.yml
+/data/                      # Generated data (persistent volume)
+├── posters/{library}/{collection}/
+│   ├── poster.png
+│   ├── history/
+│   └── prompts/
+├── cache/
+│   └── visual_signatures_cache.json
+└── reports/
 
-# Films.yml
-templates:
-  film_template:
-    sync_mode: sync
-    schedule: daily
-
-collections:
-  "Trending Movies":
-    template: {name: film_template}
-    tmdb_trending_weekly: 50
-    filters:
-      year.gte: 2015
+/logs/                      # Application logs
+├── jfc.log
+└── error.log
 ```
 
-Supported builders:
+## Supported Builders
+
 - `tmdb_trending_weekly`, `tmdb_trending_daily`
-- `tmdb_popular`
+- `tmdb_popular`, `tmdb_now_playing`
 - `tmdb_discover` (full parameter support)
 - `trakt_trending`, `trakt_popular`
 - `trakt_chart` (watched, trending, popular)
@@ -173,12 +212,19 @@ Supported builders:
 ## Testing
 
 ```bash
-# Unit tests
-pytest tests/unit/
+# All tests
+pytest tests/
 
-# Integration tests (requires services)
-pytest tests/integration/ --integration
+# Specific test
+pytest tests/test_poster_generator.py -v
 
 # With coverage
 pytest --cov=jfc --cov-report=html
 ```
+
+## CI/CD
+
+- GitHub Actions workflow builds Docker images on push/tag
+- Multi-platform: linux/amd64, linux/arm64
+- Images pushed to ghcr.io/acucumel/jellyfin-collection
+- Tags: latest (main branch), semantic versions (v1.0.0, v1.0, v1)
