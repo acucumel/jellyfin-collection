@@ -97,6 +97,22 @@ class CollectionBuilder:
         report.items_fetched = len(items)
         report.fetched_titles = [item.title for item in items]
 
+        # Store original source items (before filtering) for poster generation
+        # This ensures the poster reflects the true trending/source order
+        source_items = [
+            CollectionItem(
+                title=item.title,
+                year=item.year,
+                tmdb_id=item.tmdb_id,
+                imdb_id=item.imdb_id,
+                tvdb_id=item.tvdb_id,
+                media_type=item.media_type.value,
+                overview=item.overview,
+                genres=item.genres if item.genres else None,
+            )
+            for item in items
+        ]
+
         # Apply filters
         filtered_items = self._apply_filters(items, config)
         report.items_after_filter = len(filtered_items)
@@ -132,6 +148,7 @@ class CollectionBuilder:
             config=config,
             library_name=library_name,
             items=collection_items,
+            source_items=source_items,  # Original items for poster generation
         )
         collection.update_stats()
 
@@ -688,8 +705,10 @@ class CollectionBuilder:
             # Map media type to category
             category = self._get_poster_category(collection.library_name, media_type)
 
-            # Convert collection items back to MediaItems for context
-            media_items = self._collection_items_to_media_items(collection.items)
+            # Use source_items (original provider order) for poster generation
+            # This ensures the poster reflects the true trending list, not just available items
+            poster_items = collection.source_items if collection.source_items else collection.items
+            media_items = self._collection_items_to_media_items(poster_items)
 
             logger.info(f"Force regenerating AI poster for '{collection.config.name}'...")
             poster_path = await self.poster_generator.generate_poster(
@@ -717,8 +736,9 @@ class CollectionBuilder:
             # Map media type to category
             category = self._get_poster_category(collection.library_name, media_type)
 
-            # Convert collection items back to MediaItems for context
-            media_items = self._collection_items_to_media_items(collection.items)
+            # Use source_items (original provider order) for poster generation
+            poster_items = collection.source_items if collection.source_items else collection.items
+            media_items = self._collection_items_to_media_items(poster_items)
 
             logger.info(f"Generating AI poster for '{collection.config.name}'...")
             poster_path = await self.poster_generator.generate_poster(
