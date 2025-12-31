@@ -81,8 +81,10 @@ jfc trakt-logout
 | `OPENAI_API_KEY` | OpenAI API key | - |
 | `OPENAI_ENABLED` | Enable AI poster generation | `false` |
 | `OPENAI_EXPLICIT_REFS` | Include titles in visual signatures | `false` |
+| `OPENAI_FORCE_REGENERATE` | Force regenerate posters on every run | `false` |
 | `OPENAI_POSTER_HISTORY_LIMIT` | Keep N old posters | `5` |
 | `OPENAI_PROMPT_HISTORY_LIMIT` | Keep N prompt files | `10` |
+| `OPENAI_POSTER_LOGO_TEXT` | Logo text on posters | `NETFLEX` |
 
 ### Scheduler
 
