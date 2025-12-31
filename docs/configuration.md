@@ -48,7 +48,21 @@ Complete reference for all JFC configuration options.
 |----------|-------------|---------|
 | `TRAKT_CLIENT_ID` | Trakt application client ID | - |
 | `TRAKT_CLIENT_SECRET` | Trakt application client secret | - |
-| `TRAKT_ACCESS_TOKEN` | OAuth access token | - |
+
+**Note:** Access tokens are managed automatically. Run `jfc trakt-auth` to authenticate via OAuth Device Code flow. Tokens are stored securely in `/data/trakt_tokens.json` and refreshed automatically when expired.
+
+#### Trakt Authentication Commands
+
+```bash
+# Authenticate with Trakt (interactive - shows code to enter on trakt.tv)
+jfc trakt-auth
+
+# Check authentication status
+jfc trakt-status
+
+# Logout and revoke tokens
+jfc trakt-logout
+```
 
 ### Discord Notifications (Optional)
 
@@ -84,10 +98,9 @@ Complete reference for all JFC configuration options.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `LOG_LEVEL` | Logging level | `INFO` |
-| `CONFIG_PATH` | Config directory | `/config` |
-| `DATA_PATH` | Data directory | `/data` |
-| `LOG_PATH` | Logs directory | `/logs` |
 | `DRY_RUN` | Preview mode | `false` |
+
+**Note:** Paths are fixed for Docker: `/config` (read-only), `/data`, `/logs`. Use bind mounts in your docker-compose.yml.
 
 ## Kometa YAML Configuration
 

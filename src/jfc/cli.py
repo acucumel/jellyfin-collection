@@ -311,16 +311,28 @@ def test_connections() -> None:
         # Test Trakt (if configured)
         if settings.trakt.client_id:
             from jfc.clients.trakt import TraktClient
+            from jfc.services.trakt_auth import TraktAuth
 
             try:
-                client = TraktClient(
-                    settings.trakt.client_id,
-                    settings.trakt.client_secret,
-                    settings.trakt.access_token,
+                # Use TraktAuth to get valid token
+                auth = TraktAuth(
+                    client_id=settings.trakt.client_id,
+                    client_secret=settings.trakt.client_secret,
+                    data_dir=settings.get_data_path(),
                 )
-                movies = await client.get_trending_movies(1)
-                results.append(("Trakt", "OK", "Connected"))
-                await client.close()
+                access_token = await auth.get_valid_token()
+
+                if not access_token:
+                    results.append(("Trakt", "WARN", "Not authenticated (run: jfc trakt-auth)"))
+                else:
+                    client = TraktClient(
+                        settings.trakt.client_id,
+                        settings.trakt.client_secret,
+                        access_token,
+                    )
+                    movies = await client.get_trending_movies(1)
+                    results.append(("Trakt", "OK", "Connected"))
+                    await client.close()
             except Exception as e:
                 results.append(("Trakt", "FAIL", str(e)))
 
@@ -478,6 +490,134 @@ def generate_poster(
             raise typer.Exit(1)
 
     asyncio.run(_generate())
+
+
+@app.command()
+def trakt_auth() -> None:
+    """Authenticate with Trakt using OAuth Device Code flow."""
+    settings = get_settings()
+    setup_logging(level="WARNING")
+
+    # Check if Trakt is configured
+    if not settings.trakt.client_id or not settings.trakt.client_secret:
+        console.print("[red]Error:[/red] TRAKT_CLIENT_ID and TRAKT_CLIENT_SECRET must be set")
+        console.print("\nGet your credentials at: https://trakt.tv/oauth/applications")
+        raise typer.Exit(1)
+
+    from jfc.services.trakt_auth import TraktAuth
+
+    auth = TraktAuth(
+        client_id=settings.trakt.client_id,
+        client_secret=settings.trakt.client_secret,
+        data_dir=settings.get_data_path(),
+    )
+
+    # Check if already authenticated
+    tokens = auth.load_tokens()
+    if tokens and not tokens.is_expired():
+        console.print("[green]Already authenticated with Trakt![/green]")
+        console.print(f"Token expires: {tokens.expires_at.strftime('%Y-%m-%d %H:%M')}")
+
+        reauth = typer.confirm("Do you want to re-authenticate?", default=False)
+        if not reauth:
+            raise typer.Exit(0)
+
+    def on_code_received(user_code: str, verification_url: str, expires_in: int):
+        console.print()
+        console.print("[cyan]═══════════════════════════════════════════════════════════[/cyan]")
+        console.print("[cyan]                    TRAKT AUTHENTICATION                   [/cyan]")
+        console.print("[cyan]═══════════════════════════════════════════════════════════[/cyan]")
+        console.print()
+        console.print(f"  1. Go to: [link={verification_url}]{verification_url}[/link]")
+        console.print()
+        console.print(f"  2. Enter code: [bold yellow]{user_code}[/bold yellow]")
+        console.print()
+        console.print(f"  [dim]Code expires in {expires_in // 60} minutes[/dim]")
+        console.print()
+        console.print("[cyan]═══════════════════════════════════════════════════════════[/cyan]")
+        console.print()
+        console.print("[dim]Waiting for authorization...[/dim]")
+
+    async def _auth():
+        tokens = await auth.device_code_flow(on_code_received=on_code_received)
+
+        if tokens:
+            console.print()
+            console.print("[green]✓ Successfully authenticated with Trakt![/green]")
+            console.print(f"  Token saved to: {auth.token_path}")
+            console.print(f"  Expires: {tokens.expires_at.strftime('%Y-%m-%d %H:%M')}")
+        else:
+            console.print()
+            console.print("[red]✗ Authentication failed[/red]")
+            raise typer.Exit(1)
+
+    asyncio.run(_auth())
+
+
+@app.command()
+def trakt_status() -> None:
+    """Check Trakt authentication status."""
+    settings = get_settings()
+    setup_logging(level="WARNING")
+
+    if not settings.trakt.client_id:
+        console.print("[yellow]Trakt not configured[/yellow]")
+        console.print("Set TRAKT_CLIENT_ID and TRAKT_CLIENT_SECRET in your .env")
+        raise typer.Exit(0)
+
+    from jfc.services.trakt_auth import TraktAuth
+
+    auth = TraktAuth(
+        client_id=settings.trakt.client_id,
+        client_secret=settings.trakt.client_secret,
+        data_dir=settings.get_data_path(),
+    )
+
+    tokens = auth.load_tokens()
+
+    if not tokens:
+        console.print("[yellow]Not authenticated[/yellow]")
+        console.print("Run: jfc trakt-auth")
+        raise typer.Exit(0)
+
+    if tokens.is_expired():
+        console.print("[red]Token expired[/red]")
+        console.print(f"Expired: {tokens.expires_at.strftime('%Y-%m-%d %H:%M')}")
+        console.print("Run: jfc trakt-auth")
+    else:
+        console.print("[green]Authenticated[/green]")
+        console.print(f"Expires: {tokens.expires_at.strftime('%Y-%m-%d %H:%M')}")
+
+
+@app.command()
+def trakt_logout() -> None:
+    """Revoke Trakt authentication and delete tokens."""
+    settings = get_settings()
+    setup_logging(level="WARNING")
+
+    if not settings.trakt.client_id:
+        console.print("[yellow]Trakt not configured[/yellow]")
+        raise typer.Exit(0)
+
+    from jfc.services.trakt_auth import TraktAuth
+
+    auth = TraktAuth(
+        client_id=settings.trakt.client_id,
+        client_secret=settings.trakt.client_secret,
+        data_dir=settings.get_data_path(),
+    )
+
+    tokens = auth.load_tokens()
+    if not tokens:
+        console.print("[yellow]Not authenticated[/yellow]")
+        raise typer.Exit(0)
+
+    if typer.confirm("Are you sure you want to logout from Trakt?"):
+        async def _logout():
+            await auth.revoke_token()
+
+        asyncio.run(_logout())
+        console.print("[green]Logged out from Trakt[/green]")
 
 
 @app.command()
