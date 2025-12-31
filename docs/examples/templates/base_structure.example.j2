@@ -1,0 +1,40 @@
+{# =============================================================================
+   EXAMPLE: CUSTOM POSTER STRUCTURE
+
+   This is an example of a customized poster template.
+   Copy this to config/templates/base_structure.j2 and modify as needed.
+
+   This example shows a minimalist design with:
+   - Simpler text positioning
+   - Different logo style
+   - Focus on the scene
+   ============================================================================= #}
+{{ poster_style }} poster, vertical 2:3 ratio, photorealistic quality.
+
+=== TEXT LAYOUT ===
+
+TOP AREA (centered, 8% from top):
+- "{{ category }}" in bold uppercase, 120pt, white with black shadow
+- "{{ collection_display_name }}" below, 60pt, white with gold glow
+
+BOTTOM AREA (centered, 95% from top):
+- Your custom logo or branding text here
+- 36pt, white, subtle shadow
+
+=== SCENE ===
+
+{{ scene_description }}
+
+Color palette: {{ color_palette }}.
+Style: {{ mood_style }}
+
+=== RENDERING ===
+- Professional photography quality
+- {{ lighting_style }}
+- Film grain for cinematic feel
+- No watermarks, no extra text
+
+=== LAYOUT RULES ===
+- Single coherent scene
+- Text areas have dark gradient overlay for readability
+- All elements grounded in the scene

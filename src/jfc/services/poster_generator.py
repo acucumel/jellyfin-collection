@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import Any, Optional
 
 import httpx
-from jinja2 import Environment, BaseLoader
+import yaml
+from jinja2 import Environment, FileSystemLoader, BaseLoader, ChoiceLoader
 from loguru import logger
 from openai import AsyncOpenAI
 
@@ -32,14 +33,15 @@ API_TIMEOUT = httpx.Timeout(
 
 
 # =============================================================================
-# JINJA2 TEMPLATES
+# JINJA2 TEMPLATES - DEFAULT FALLBACKS
 # =============================================================================
 
-# Initialize Jinja2 environment
-_jinja_env = Environment(loader=BaseLoader(), autoescape=False)
+# Default Jinja2 environment (will be overridden if external templates exist)
+_default_jinja_env = Environment(loader=BaseLoader(), autoescape=False)
 
 # Base structure (IMMUTABLE) - applies to ALL posters
-BASE_STRUCTURE_TEMPLATE = """{{ poster_style }} poster, vertical 2:3 ratio, photorealistic cinematic quality.
+# This is the DEFAULT template - can be overridden by config/templates/base_structure.j2
+DEFAULT_BASE_STRUCTURE_TEMPLATE = """{{ poster_style }} poster, vertical 2:3 ratio, photorealistic cinematic quality.
 
 === TYPOGRAPHY (CRITICAL - MUST BE EXACT) ===
 
@@ -111,7 +113,8 @@ TMDB_GENRES = {
 }
 
 # Prompt for generating visual signatures from metadata (not titles)
-VISUAL_SIGNATURE_FROM_METADATA_PROMPT = """You are a visual design expert. Based on this movie/series metadata, create an ICONIC VISUAL SIGNATURE - the visual elements that would make a striking poster scene.
+# This is the DEFAULT template - can be overridden by config/templates/visual_signature.j2
+DEFAULT_VISUAL_SIGNATURE_TEMPLATE = """You are a visual design expert. Based on this movie/series metadata, create an ICONIC VISUAL SIGNATURE - the visual elements that would make a striking poster scene.
 
 Metadata:
 - Genres: {{ genres }}
@@ -130,58 +133,9 @@ Example: "deep crimson and midnight blue, rain-soaked neon city streets, trenchc
 
 Output ONLY the visual signature, nothing else."""
 
-# Visual signatures dictionary - maps keywords to visual descriptions
-# This avoids API calls and copyright issues by using pre-defined visual styles
-VISUAL_SIGNATURES_DB = {
-    # Sci-Fi / Avatar-like
-    "avatar": "bioluminescent cyan jungle with floating mountains, tall blue-skinned silhouettes with pointed ears and braids, glowing alien flora",
-    "pandora": "bioluminescent cyan jungle with floating mountains, tall blue-skinned silhouettes with pointed ears and braids, glowing alien flora",
-    # Fantasy / Wicked-like
-    "wicked": "emerald green magical sparks, silhouette in pointed witch hat and flowing dark robes, golden brick road leading to emerald city",
-    "oz": "emerald green magical sparks, silhouette in pointed witch hat and flowing dark robes, golden brick road leading to emerald city",
-    # Animation / Zootopia-like
-    "zootop": "vibrant anthropomorphic animal city, neon-lit urban jungle, diverse animal silhouettes in modern clothing",
-    # Mystery / Knives Out-like
-    "couteau": "elegant manor with warm amber lighting, well-dressed silhouettes around ornate furniture, mysterious shadows",
-    "knives": "elegant manor with warm amber lighting, well-dressed silhouettes around ornate furniture, mysterious shadows",
-    # Horror / FNAF-like
-    "freddy": "dark abandoned pizza restaurant, menacing animatronic silhouettes with glowing eyes, flickering lights",
-    "fnaf": "dark abandoned pizza restaurant, menacing animatronic silhouettes with glowing eyes, flickering lights",
-    # Action / xXx-like
-    "xxx": "extreme sports action, explosions and motorcycles, muscular silhouette with tattoos",
-    # Jungle / Anaconda-like
-    "anaconda": "dense humid jungle, massive snake coils in murky water, explorers in safari gear",
-    "jungle": "dense humid jungle, massive snake coils in murky water, explorers in safari gear",
-    # Romance / Eternal-like
-    "éternité": "romantic golden hour lighting, couple silhouettes embracing, dreamy soft-focus atmosphere",
-    "eternit": "romantic golden hour lighting, couple silhouettes embracing, dreamy soft-focus atmosphere",
-    "eternal": "romantic golden hour lighting, couple silhouettes embracing, dreamy soft-focus atmosphere",
-    # Sci-Fi / Tron-like
-    "tron": "neon blue grid lines on black, glowing circuit patterns, sleek helmeted figures on light cycles",
-    # Magic / Illusionist
-    "insaisissable": "stage magic with playing cards and smoke, suited magicians, dramatic spotlights",
-    "magic": "stage magic with playing cards and smoke, suited magicians, dramatic spotlights",
-    # War / Historical
-    "nuremberg": "dramatic courtroom with harsh lighting, suited figures in judgment, historical gravitas",
-    "guerre": "battlefield smoke and explosions, soldiers in silhouette, dramatic war photography",
-    # Running / Survival
-    "running": "dystopian arena with crowds, athletic figure sprinting, danger and survival",
-    # Animation / SpongeBob-like
-    "éponge": "underwater cartoon world, colorful sea creatures, playful bubbles and coral",
-    "sponge": "underwater cartoon world, colorful sea creatures, playful bubbles and coral",
-    # Generic fallbacks by genre keywords
-    "action": "explosive urban environment, muscular silhouettes, fire and debris",
-    "horreur": "dark foggy atmosphere, menacing shadows, flickering lights",
-    "horror": "dark foggy atmosphere, menacing shadows, flickering lights",
-    "comédie": "bright colorful environment, expressive character silhouettes, comedic chaos",
-    "comedy": "bright colorful environment, expressive character silhouettes, comedic chaos",
-    "romance": "soft golden lighting, couple silhouettes, dreamy atmosphere",
-    "sci-fi": "futuristic cityscape with neon lights, sleek technology, cosmic elements",
-    "fantasy": "magical forest with glowing elements, mystical creatures, enchanted atmosphere",
-}
-
 # Scene description prompt template - uses visual signatures
-SCENE_PROMPT_TEMPLATE = """You are a cinematic poster designer creating a visually striking scene.
+# This is the DEFAULT template - can be overridden by config/templates/scene_description.j2
+DEFAULT_SCENE_PROMPT_TEMPLATE = """You are a cinematic poster designer creating a visually striking scene.
 
 Collection theme: "{{ collection_name }}"
 Category: {{ category }}
@@ -207,7 +161,8 @@ GOOD example: "A tall silhouette with pointed ears stands in a bioluminescent ju
 Output ONLY the scene description, nothing else."""
 
 # Artistic direction per category
-CATEGORY_STYLES = {
+# This is the DEFAULT configuration - can be overridden by config/templates/category_styles.yaml
+DEFAULT_CATEGORY_STYLES = {
     "FILMS": {
         "poster_style": "Cinematic blockbuster",
         "base_mood": "Ultra-detailed, dramatic lighting, epic scale, modern Hollywood spectacle.",
@@ -230,7 +185,8 @@ CATEGORY_STYLES = {
 }
 
 # Collection type themes (for color palette and mood hints)
-COLLECTION_THEMES = {
+# This is the DEFAULT configuration - can be overridden by config/templates/collection_themes.yaml
+DEFAULT_COLLECTION_THEMES = {
     # Trending/Popular
     "tendances": {
         "color_hint": "fiery orange + electric blue",
@@ -350,6 +306,7 @@ class PosterGenerator:
         api_key: str,
         output_dir: Path,
         cache_dir: Optional[Path] = None,
+        templates_dir: Optional[Path] = None,
         poster_history_limit: int = 5,
         prompt_history_limit: int = 10,
     ):
@@ -360,6 +317,7 @@ class PosterGenerator:
             api_key: OpenAI API key
             output_dir: Directory to save generated posters (data/posters)
             cache_dir: Directory for cache files (data/cache)
+            templates_dir: Directory for custom templates (config/templates)
             poster_history_limit: Number of old posters to keep (0=unlimited)
             prompt_history_limit: Number of prompt JSON files to keep (0=unlimited)
         """
@@ -375,15 +333,77 @@ class PosterGenerator:
         self.cache_dir = cache_dir or output_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
+        # Templates directory for external customization
+        self.templates_dir = templates_dir
+
+        # Load external templates and configurations
+        self._load_external_templates()
+
         # Load cached visual signatures
         self.signatures_cache_path = self.cache_dir / "visual_signatures_cache.json"
         self.signatures_cache = self._load_signatures_cache()
 
         logger.info(f"PosterGenerator initialized (output: {output_dir})")
+        if templates_dir and templates_dir.exists():
+            logger.info(f"Custom templates loaded from: {templates_dir}")
         logger.info(f"Retention: {poster_history_limit} posters, {prompt_history_limit} prompts")
         logger.debug(f"Loaded {len(self.signatures_cache)} cached visual signatures")
         if self.signatures_cache:
             logger.debug(f"Cache keys sample: {list(self.signatures_cache.keys())[:5]}")
+
+    def _load_external_templates(self) -> None:
+        """Load external Jinja2 templates and YAML configurations."""
+        # Initialize Jinja2 environment
+        if self.templates_dir and self.templates_dir.exists():
+            # Use FileSystemLoader for external templates with fallback to strings
+            self.jinja_env = Environment(
+                loader=FileSystemLoader(str(self.templates_dir)),
+                autoescape=False
+            )
+            logger.debug(f"Jinja2 environment using templates from: {self.templates_dir}")
+        else:
+            # Use default string-based templates
+            self.jinja_env = Environment(loader=BaseLoader(), autoescape=False)
+            logger.debug("Jinja2 environment using embedded default templates")
+
+        # Load YAML configurations with fallback to defaults
+        self.category_styles = self._load_yaml_config(
+            "category_styles.yaml", DEFAULT_CATEGORY_STYLES
+        )
+        self.collection_themes = self._load_yaml_config(
+            "collection_themes.yaml", DEFAULT_COLLECTION_THEMES
+        )
+        # Note: visual_signatures_db is no longer used - signatures are generated
+        # by GPT and cached in visual_signatures_cache.json
+
+    def _load_yaml_config(self, filename: str, default: dict) -> dict:
+        """Load a YAML configuration file with fallback to default."""
+        if self.templates_dir:
+            config_path = self.templates_dir / filename
+            if config_path.exists():
+                try:
+                    with open(config_path, encoding="utf-8") as f:
+                        loaded = yaml.safe_load(f)
+                        if loaded:
+                            logger.debug(f"Loaded external config: {filename}")
+                            return loaded
+                except Exception as e:
+                    logger.warning(f"Failed to load {filename}: {e}, using defaults")
+        return default
+
+    def _get_template(self, name: str, default: str) -> str:
+        """Get template content from file or return default."""
+        if self.templates_dir:
+            template_path = self.templates_dir / name
+            if template_path.exists():
+                try:
+                    with open(template_path, encoding="utf-8") as f:
+                        content = f.read()
+                        logger.debug(f"Loaded external template: {name}")
+                        return content
+                except Exception as e:
+                    logger.warning(f"Failed to load template {name}: {e}")
+        return default
 
     def _load_signatures_cache(self) -> dict[str, str]:
         """Load cached visual signatures from JSON file."""
@@ -554,7 +574,7 @@ class PosterGenerator:
         """Build the scene description prompt with visual signatures."""
         # Get theme hints
         theme = self._get_collection_theme(config.name)
-        style = CATEGORY_STYLES.get(category, CATEGORY_STYLES["FILMS"])
+        style = self.category_styles.get(category, self.category_styles.get("FILMS", {}))
 
         # Override mood and colors for CARTOONS
         if category == "CARTOONS":
@@ -573,8 +593,11 @@ IMPORTANT FOR CARTOONS:
             color_hint = theme.get("color_hint", "cinematic colors")
             extra_rules = ""
 
-        # Render Jinja2 template
-        template = _jinja_env.from_string(SCENE_PROMPT_TEMPLATE)
+        # Get template (external file or default)
+        template_content = self._get_template(
+            "scene_description.j2", DEFAULT_SCENE_PROMPT_TEMPLATE
+        )
+        template = self.jinja_env.from_string(template_content)
         base_prompt = template.render(
             collection_name=config.name,
             category=category,
@@ -608,19 +631,11 @@ IMPORTANT FOR CARTOONS:
         items_needing_generation = []
 
         for item in items[:5]:
-            title_lower = item.title.lower()
             signature = None
 
-            # 1. Check local database first
-            for key, sig in VISUAL_SIGNATURES_DB.items():
-                if key in title_lower:
-                    signature = sig
-                    logger.debug(f"[DB] Matched '{key}' for '{item.title}'")
-                    break
-
-            # 2. Check cache
+            # Check cache (signatures generated by GPT and cached)
             logger.debug(f"[Cache lookup] title='{item.title}', in_cache={item.title in self.signatures_cache}")
-            if not signature and item.title in self.signatures_cache:
+            if item.title in self.signatures_cache:
                 signature = self.signatures_cache[item.title]
                 logger.debug(f"[Cache] Found signature for '{item.title}'")
 
@@ -683,7 +698,11 @@ IMPORTANT FOR CARTOONS:
             if len(overview) > 200:
                 overview = overview[:200] + "..."
 
-            template = _jinja_env.from_string(VISUAL_SIGNATURE_FROM_METADATA_PROMPT)
+            # Get template (external file or default)
+            template_content = self._get_template(
+                "visual_signature.j2", DEFAULT_VISUAL_SIGNATURE_TEMPLATE
+            )
+            template = self.jinja_env.from_string(template_content)
             prompt = template.render(genres=genres, overview=overview)
 
             try:
@@ -813,26 +832,29 @@ IMPORTANT FOR CARTOONS:
         scene_description: str,
     ) -> str:
         """Build the full image generation prompt using Jinja2 template."""
-        style = CATEGORY_STYLES.get(category, CATEGORY_STYLES["FILMS"])
+        style = self.category_styles.get(category, self.category_styles.get("FILMS", {}))
         theme = self._get_collection_theme(config.name)
 
         # Use color override for specific categories (e.g., CARTOONS)
         color_palette = style.get("color_override", theme.get("color_hint", "cinematic blues + warm highlights"))
 
         # For CARTOONS, add extra child-friendly instructions
-        scene_prefix = f"Single {style['scene_context']}"
+        scene_prefix = f"Single {style.get('scene_context', 'cinematic scene')}"
         if category == "CARTOONS":
             scene_prefix = "Bright, colorful, family-friendly animated scene"
 
-        # Render Jinja2 template
-        template = _jinja_env.from_string(BASE_STRUCTURE_TEMPLATE)
+        # Get template (external file or default)
+        template_content = self._get_template(
+            "base_structure.j2", DEFAULT_BASE_STRUCTURE_TEMPLATE
+        )
+        template = self.jinja_env.from_string(template_content)
         return template.render(
-            poster_style=style["poster_style"],
+            poster_style=style.get("poster_style", "Cinematic"),
             category=category,
             collection_display_name=config.name,
             scene_description=f"{scene_prefix}: {scene_description}",
             color_palette=color_palette,
-            mood_style=style["base_mood"],
+            mood_style=style.get("base_mood", "Dramatic and engaging"),
             lighting_style=style.get("lighting_style", "Dramatic cinematic lighting"),
         )
 
@@ -898,7 +920,7 @@ IMPORTANT FOR CARTOONS:
         """Get theme hints based on collection name."""
         name_lower = collection_name.lower()
 
-        for key, theme in COLLECTION_THEMES.items():
+        for key, theme in self.collection_themes.items():
             if key in name_lower:
                 return theme
 

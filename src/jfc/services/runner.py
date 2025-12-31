@@ -98,6 +98,7 @@ class Runner:
                 api_key=settings.openai.api_key,
                 output_dir=settings.get_posters_path(),
                 cache_dir=settings.get_cache_path(),
+                templates_dir=settings.get_templates_path(),
                 poster_history_limit=settings.openai.poster_history_limit,
                 prompt_history_limit=settings.openai.prompt_history_limit,
             )

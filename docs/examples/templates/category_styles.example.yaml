@@ -1,0 +1,54 @@
+# =============================================================================
+# EXAMPLE: CUSTOM CATEGORY STYLES
+#
+# Copy this to config/templates/category_styles.yaml and modify as needed.
+# This example includes additional categories like ANIME and DOCUMENTARIES.
+# =============================================================================
+
+FILMS:
+  poster_style: "Cinematic blockbuster"
+  base_mood: "Ultra-detailed, dramatic lighting, epic scale."
+  scene_context: "cinematic movie scene"
+  lighting_style: "Dramatic three-point lighting with rim light"
+
+SERIES:
+  poster_style: "Prestige TV"
+  base_mood: "Binge-worthy, prestige TV aesthetics."
+  scene_context: "prestige TV scene"
+  lighting_style: "Soft diffused lighting with dramatic shadows"
+
+CARTOONS:
+  poster_style: "Pixar/Disney-style 3D animated"
+  base_mood: "Vibrant colors, family-friendly, whimsical."
+  scene_context: "cheerful animated adventure"
+  lighting_style: "Bright sunny lighting with magical sparkles"
+  color_override: "bright primary colors + candy pastels"
+
+# --- CUSTOM CATEGORIES ---
+
+ANIME:
+  poster_style: "Japanese anime"
+  base_mood: "Dynamic, vibrant, stylized action, manga-inspired."
+  scene_context: "anime action scene"
+  lighting_style: "Dramatic rim lighting with speed lines and energy effects"
+  color_override: "neon pink + electric blue + vibrant orange"
+
+DOCUMENTARIES:
+  poster_style: "Documentary"
+  base_mood: "Authentic, thought-provoking, journalistic."
+  scene_context: "documentary exploration"
+  lighting_style: "Natural lighting, candid photography style"
+
+CONCERTS:
+  poster_style: "Live concert"
+  base_mood: "Energetic, live performance, crowd excitement."
+  scene_context: "live concert atmosphere"
+  lighting_style: "Stage spotlights, laser beams, crowd silhouettes"
+  color_override: "neon purple + laser green + spotlight white"
+
+CLASSICS:
+  poster_style: "Classic Hollywood"
+  base_mood: "Timeless, elegant, golden age of cinema."
+  scene_context: "classic film scene"
+  lighting_style: "Dramatic black and white inspired, high contrast"
+  color_override: "sepia tones + gold + warm amber"
