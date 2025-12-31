@@ -228,3 +228,15 @@ pytest --cov=jfc --cov-report=html
 - Multi-platform: linux/amd64, linux/arm64
 - Images pushed to ghcr.io/acucumel/jellyfin-collection
 - Tags: latest (main branch), semantic versions (v1.0.0, v1.0, v1)
+
+## AI Models
+
+- Uses OpenAI GPT-5.1 for prompt generation (scene descriptions, visual signatures)
+- Uses gpt-image-1.5 for poster image generation
+- Visual signatures built from item metadata and AI analysis
+
+## Context
+
+- Current year: 2025
+- Author: Alexis CUCUMEL
+- License: MIT (2025-2026)

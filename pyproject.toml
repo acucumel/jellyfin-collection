@@ -5,7 +5,7 @@ description = "Kometa-compatible collection manager for Jellyfin with Sonarr/Rad
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
-authors = [{ name = "Alex" }]
+authors = [{ name = "Alexis CUCUMEL" }]
 keywords = ["jellyfin", "kometa", "collections", "sonarr", "radarr", "tmdb", "trakt"]
 
 dependencies = [

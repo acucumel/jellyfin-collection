@@ -217,6 +217,10 @@ class Settings(BaseSettings):
         """Get logs directory path."""
         return self.log_path
 
+    def get_templates_path(self) -> Path:
+        """Get templates directory (under config)."""
+        return self.config_path / "templates"
+
     @property
     def jellyfin(self) -> JellyfinSettings:
         """Get Jellyfin settings."""
