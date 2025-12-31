@@ -176,10 +176,19 @@ def schedule(
     scheduler = Scheduler(timezone=settings.scheduler.timezone)
 
     async def collections_sync():
-        """Daily collection sync (no poster regeneration)."""
-        logger.info("Starting scheduled collection sync...")
+        """Daily collection sync.
+
+        Poster regeneration depends on OPENAI_FORCE_REGENERATE setting.
+        By default (False), existing posters are reused.
+        Set OPENAI_FORCE_REGENERATE=true to force poster regeneration on every sync.
+        """
+        force_posters = settings.openai.force_regenerate
+        if force_posters:
+            logger.info("Starting scheduled collection sync (with poster regeneration)...")
+        else:
+            logger.info("Starting scheduled collection sync...")
         try:
-            await runner.run(scheduled=True, force_posters=False)
+            await runner.run(scheduled=True, force_posters=force_posters)
         except Exception as e:
             logger.error(f"Scheduled collection sync failed: {e}")
 
@@ -211,7 +220,8 @@ def schedule(
             func=collections_sync,
             cron_expression=col_cron,
         )
-        console.print(f"[green]✓[/green] Collection sync scheduled: [cyan]{col_cron}[/cyan]")
+        poster_mode = "+ posters" if settings.openai.force_regenerate else "no posters"
+        console.print(f"[green]✓[/green] Collection sync scheduled: [cyan]{col_cron}[/cyan] ({poster_mode})")
 
         # Schedule poster regeneration job (if enabled)
         if post_cron and post_cron.strip():
