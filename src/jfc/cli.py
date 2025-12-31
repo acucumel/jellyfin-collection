@@ -559,6 +559,50 @@ def generate_poster(
 
 
 @app.command()
+def regenerate_posters(
+    libraries: Optional[list[str]] = typer.Option(
+        None, "--library", "-l", help="Libraries to process (can be repeated)"
+    ),
+    collections: Optional[list[str]] = typer.Option(
+        None, "--collection", "-c", help="Collections to process (can be repeated)"
+    ),
+) -> None:
+    """Force regeneration of all AI posters (without full collection sync)."""
+    settings = get_settings()
+    log_dir = settings.get_log_path()
+    setup_logging(level=settings.log_level, log_dir=log_dir)
+
+    # Check OpenAI configuration
+    if not settings.openai.api_key or not settings.openai.enabled:
+        console.print("[red]Error:[/red] OpenAI not configured or disabled")
+        console.print("Set OPENAI_API_KEY and OPENAI_ENABLED=true in your .env")
+        raise typer.Exit(1)
+
+    from jfc.services.runner import Runner
+
+    async def _run():
+        await ensure_trakt_auth(settings)
+
+        runner = Runner(settings)
+        try:
+            console.print("[cyan]Regenerating all posters...[/cyan]")
+            report = await runner.run(
+                libraries=libraries,
+                collections=collections,
+                scheduled=False,
+                force_posters=True,
+            )
+            console.print(
+                f"\n[green]Completed![/green] "
+                f"{report.successful_collections} collections processed"
+            )
+        finally:
+            await runner.close()
+
+    asyncio.run(_run())
+
+
+@app.command()
 def trakt_auth() -> None:
     """Authenticate with Trakt using OAuth Device Code flow."""
     settings = get_settings()
