@@ -42,6 +42,8 @@ class YamlSettingsSource(PydanticBaseSettingsSource):
     def _load_yaml(self) -> None:
         """Load and parse the YAML file."""
         if not self.yaml_file.exists():
+            # Log will be available after logging is configured
+            print(f"[config] YAML config not found: {self.yaml_file}")
             return
 
         try:
@@ -49,8 +51,10 @@ class YamlSettingsSource(PydanticBaseSettingsSource):
                 data = yaml.safe_load(f) or {}
             settings_data = data.get("settings", {})
             self._yaml_data = self._flatten_settings(settings_data)
-        except Exception:
-            # If YAML loading fails, silently fall back to defaults
+            print(f"[config] Loaded {len(self._yaml_data)} settings from: {self.yaml_file}")
+        except Exception as e:
+            # If YAML loading fails, log and fall back to defaults
+            print(f"[config] Failed to load YAML config: {e}")
             pass
 
     def _flatten_settings(self, data: dict, prefix: str = "") -> dict:
@@ -282,7 +286,8 @@ class Settings(BaseSettings):
         5. file_secret_settings - secret files
         """
         # Determine config.yml path from env var (before other sources load)
-        config_path = Path(os.getenv("CONFIG_PATH", "./config"))
+        # Default to /config for Docker compatibility (workdir is /app)
+        config_path = Path(os.getenv("CONFIG_PATH", "/config"))
         yaml_file = config_path / "config.yml"
 
         return (
