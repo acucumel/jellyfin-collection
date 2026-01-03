@@ -305,13 +305,17 @@ MESSAGE:"""
         chat_id = notification.chat_id
         thread_id = notification.thread_id
 
-        # Filter items based on only_available setting
+        # Filter items based on only_available setting and limit to top 5
         films = context.films
         series = context.series
 
         if notification.only_available:
             films = [f for f in films if f.available]
             series = [s for s in series if s.available]
+
+        # Limit to top 5 each (after availability filter)
+        films = films[:5]
+        series = series[:5]
 
         # Check minimum items
         total_items = len(films) + len(series)
