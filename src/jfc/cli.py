@@ -823,6 +823,127 @@ def trakt_logout() -> None:
 
 
 @app.command()
+def test_telegram(
+    message: Optional[str] = typer.Option(
+        None, "--message", "-m", help="Custom message to send (default: test message)"
+    ),
+    use_ai: bool = typer.Option(
+        True, "--ai/--no-ai", help="Use AI to generate Alfred-style message"
+    ),
+) -> None:
+    """Test Telegram notification with sample data."""
+    settings = get_settings()
+    setup_logging(level="INFO")
+
+    # Check configuration
+    if not settings.telegram.bot_token:
+        console.print("[red]Error:[/red] TELEGRAM_BOT_TOKEN not set in .env")
+        raise typer.Exit(1)
+
+    if not settings.telegram.notifications:
+        console.print("[red]Error:[/red] No Telegram notifications configured in config.yml")
+        console.print("\nAdd to config.yml under settings.telegram.notifications:")
+        console.print("  - name: test")
+        console.print("    chat_id: YOUR_CHAT_ID")
+        raise typer.Exit(1)
+
+    from jfc.clients.telegram import NotificationContext, TelegramClient, TrendingItem
+
+    async def _test():
+        # Create client
+        client = TelegramClient(
+            bot_token=settings.telegram.bot_token,
+            openai_api_key=settings.openai.api_key if use_ai and settings.openai.enabled else None,
+        )
+
+        # Sample data for testing
+        sample_films = [
+            TrendingItem(
+                title="Dune: Part Two",
+                year=2024,
+                genres=["Science-Fiction", "Aventure"],
+                poster_url="https://image.tmdb.org/t/p/w500/8b8R8l88Qje9dn9OE8PY05Nxl1X.jpg",
+                tmdb_id=693134,
+                available=True,
+            ),
+            TrendingItem(
+                title="Oppenheimer",
+                year=2023,
+                genres=["Drame", "Histoire"],
+                poster_url="https://image.tmdb.org/t/p/w500/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg",
+                tmdb_id=872585,
+                available=True,
+            ),
+            TrendingItem(
+                title="Deadpool & Wolverine",
+                year=2024,
+                genres=["Action", "Comédie"],
+                poster_url="https://image.tmdb.org/t/p/w500/8cdWjvZQUExUUTzyp4t6EDMubfO.jpg",
+                tmdb_id=533535,
+                available=False,
+            ),
+        ]
+
+        sample_series = [
+            TrendingItem(
+                title="Shogun",
+                year=2024,
+                genres=["Drame", "Guerre"],
+                poster_url="https://image.tmdb.org/t/p/w500/7O4iVfOMQmdCSxhOg1WnzG1AgYT.jpg",
+                tmdb_id=126308,
+                available=True,
+            ),
+            TrendingItem(
+                title="Fallout",
+                year=2024,
+                genres=["Science-Fiction", "Action"],
+                poster_url="https://image.tmdb.org/t/p/w500/AnsSKR9LuK0T9bAOcPVA3PUvyWj.jpg",
+                tmdb_id=106379,
+                available=False,
+            ),
+        ]
+
+        # Build context
+        context = NotificationContext(
+            trigger="trending",
+            films=sample_films,
+            series=sample_series,
+            duration_seconds=45.5,
+            collections_updated=3,
+            items_added=5,
+            items_removed=2,
+        )
+
+        # Get first notification config
+        notification = settings.telegram.notifications[0]
+        console.print(f"[cyan]Testing notification:[/cyan] {notification.name}")
+        console.print(f"[cyan]Chat ID:[/cyan] {notification.chat_id}")
+        if notification.thread_id:
+            console.print(f"[cyan]Thread ID:[/cyan] {notification.thread_id}")
+        console.print(f"[cyan]AI enabled:[/cyan] {use_ai and settings.openai.enabled}")
+        console.print()
+
+        if message:
+            # Send custom message directly
+            success = await client.send_message(
+                chat_id=notification.chat_id,
+                text=message,
+                thread_id=notification.thread_id,
+            )
+        else:
+            # Use full notification processing
+            success = await client.process_notification(notification, context)
+
+        if success:
+            console.print("[green]✓ Test notification sent successfully![/green]")
+        else:
+            console.print("[red]✗ Failed to send notification[/red]")
+            raise typer.Exit(1)
+
+    asyncio.run(_test())
+
+
+@app.command()
 def version() -> None:
     """Show version information."""
     from jfc import __version__
