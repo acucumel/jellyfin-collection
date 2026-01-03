@@ -155,6 +155,9 @@ class CollectionItem(BaseModel):
     overview: Optional[str] = None
     genres: Optional[list[int | str]] = None  # int for TMDb IDs, str for Trakt names
 
+    # TMDb poster path for notifications (e.g., "/abc123.jpg")
+    poster_path: Optional[str] = None
+
 
 class CollectionConfig(BaseModel):
     """Configuration for a single collection (from Kometa YAML)."""
