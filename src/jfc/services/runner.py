@@ -14,6 +14,7 @@ from jfc.clients.discord import DiscordWebhook
 from jfc.clients.jellyfin import JellyfinClient
 from jfc.clients.radarr import RadarrClient
 from jfc.clients.sonarr import SonarrClient
+from jfc.clients.telegram import TelegramClient, TrendingItem
 from jfc.clients.tmdb import TMDbClient
 from jfc.clients.trakt import TraktClient
 from jfc.core.config import Settings
@@ -91,6 +92,16 @@ class Runner:
             run_end_url=settings.discord.webhook_run_end,
             changes_url=settings.discord.webhook_changes,
         )
+
+        # Initialize Telegram client (if configured)
+        self.telegram: Optional[TelegramClient] = None
+        if settings.telegram.is_configured:
+            self.telegram = TelegramClient(
+                bot_token=settings.telegram.bot_token,
+                chat_id=settings.telegram.chat_id,
+                trending_thread_id=settings.telegram.trending_thread_id,
+            )
+            logger.info("Telegram notifications enabled")
 
         # Initialize parser
         self.parser = KometaParser(settings.config_path)
@@ -198,6 +209,10 @@ class Runner:
             dry_run=self.dry_run,
         )
 
+        # Store trending items for Telegram notification
+        # Key: "films" or "series", Value: list of TrendingItem
+        trending_items: dict[str, list[TrendingItem]] = {"films": [], "series": []}
+
         logger.info(f"Starting collection update run (ID: {run_report.run_id})")
 
         # Parse all collections
@@ -267,6 +282,29 @@ class Runner:
                         library_id=library_id,
                         media_type=media_type,
                     )
+
+                    # Collect trending items for Telegram notification
+                    if self.telegram and "tendances" in config.name.lower():
+                        category = "series" if media_type == MediaType.SERIES else "films"
+                        for item in collection.source_items[:10]:
+                            # Convert genres to strings
+                            genre_strs = []
+                            if item.genres:
+                                for g in item.genres[:2]:
+                                    if isinstance(g, int):
+                                        from jfc.services.poster_generator import TMDB_GENRES
+                                        genre_strs.append(TMDB_GENRES.get(g, ""))
+                                    else:
+                                        genre_strs.append(str(g))
+                            genre_strs = [g for g in genre_strs if g]  # Remove empty
+
+                            trending_items[category].append(TrendingItem(
+                                title=item.title,
+                                year=item.year,
+                                genres=genre_strs if genre_strs else None,
+                                poster_url=TelegramClient.build_poster_url(item.poster_path),
+                                tmdb_id=item.tmdb_id,
+                            ))
 
                     # Sync to Jellyfin (or just posters if posters_only mode)
                     added, removed, poster_path = await self.builder.sync_collection(
@@ -338,6 +376,17 @@ class Runner:
             radarr_requests=run_report.total_radarr_requests,
             sonarr_requests=run_report.total_sonarr_requests,
         )
+
+        # Send Telegram trending notification (if configured and has items)
+        if self.telegram and (trending_items["films"] or trending_items["series"]):
+            try:
+                await self.telegram.send_trending_notification(
+                    films=trending_items["films"],
+                    series=trending_items["series"],
+                )
+                logger.info("Telegram trending notification sent")
+            except Exception as e:
+                logger.warning(f"Failed to send Telegram notification: {e}")
 
         # Print and save report
         self.report_generator.print_run_report(run_report)

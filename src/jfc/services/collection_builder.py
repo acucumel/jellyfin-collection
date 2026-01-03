@@ -109,6 +109,7 @@ class CollectionBuilder:
                 media_type=item.media_type.value,
                 overview=item.overview,
                 genres=item.genres if item.genres else None,
+                poster_path=item.poster_path,
             )
             for item in items
         ]
@@ -135,6 +136,7 @@ class CollectionBuilder:
                 # Preserve metadata for AI poster generation
                 overview=item.overview,
                 genres=item.genres if item.genres else None,
+                poster_path=item.poster_path,
             )
             collection_items.append(collection_item)
 

@@ -187,6 +187,25 @@ class DiscordSettings(BaseModel):
         return specific or self.webhook_url
 
 
+class TelegramSettings(BaseModel):
+    """Telegram bot configuration for notifications."""
+
+    bot_token: Optional[str] = Field(default=None)
+    chat_id: Optional[str] = Field(default=None)
+    # Topic/thread ID for forum groups (optional)
+    trending_thread_id: Optional[int] = Field(
+        default=None,
+        description="Message thread ID for trending notifications topic"
+    )
+    # Enable/disable Telegram notifications
+    enabled: bool = Field(default=False)
+
+    @property
+    def is_configured(self) -> bool:
+        """Check if Telegram is properly configured."""
+        return bool(self.bot_token and self.chat_id and self.enabled)
+
+
 class SchedulerSettings(BaseModel):
     """Scheduler configuration."""
 
@@ -256,6 +275,12 @@ class Settings(BaseSettings):
     discord_webhook_run_start: Optional[str] = Field(default=None)
     discord_webhook_run_end: Optional[str] = Field(default=None)
     discord_webhook_changes: Optional[str] = Field(default=None)
+
+    # Telegram
+    telegram_bot_token: Optional[str] = Field(default=None)
+    telegram_chat_id: Optional[str] = Field(default=None)
+    telegram_trending_thread_id: Optional[int] = Field(default=None)
+    telegram_enabled: bool = Field(default=False)
 
     # Scheduler
     scheduler_collections_cron: str = Field(default="0 3 * * *")
@@ -428,6 +453,16 @@ class Settings(BaseSettings):
         )
 
     @property
+    def telegram(self) -> TelegramSettings:
+        """Get Telegram settings."""
+        return TelegramSettings(
+            bot_token=self.telegram_bot_token,
+            chat_id=self.telegram_chat_id,
+            trending_thread_id=self.telegram_trending_thread_id,
+            enabled=self.telegram_enabled,
+        )
+
+    @property
     def scheduler(self) -> SchedulerSettings:
         """Get Scheduler settings."""
         return SchedulerSettings(
@@ -506,6 +541,13 @@ def log_settings(settings: "Settings") -> None:
     # Discord
     logger.info("[Discord]")
     logger.info(f"  Webhook URL: {_mask_secret(settings.discord_webhook_url, 30) if settings.discord_webhook_url else '(not set)'}")
+
+    # Telegram
+    logger.info("[Telegram]")
+    logger.info(f"  Enabled:     {settings.telegram_enabled}")
+    logger.info(f"  Bot Token:   {_mask_secret(settings.telegram_bot_token)}")
+    logger.info(f"  Chat ID:     {settings.telegram_chat_id or '(not set)'}")
+    logger.info(f"  Thread ID:   {settings.telegram_trending_thread_id or '(not set)'}")
 
     # Scheduler
     logger.info("[Scheduler]")
