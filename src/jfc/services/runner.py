@@ -288,7 +288,8 @@ class Runner:
                         # Use collection.items (matched items) for availability info
                         matched_ids = {i.tmdb_id for i in collection.items if i.matched}
 
-                        for item in collection.source_items[:10]:
+                        # Take more items to ensure we have enough after filtering
+                        for item in collection.source_items[:20]:
                             # Convert genres to strings
                             genre_strs = []
                             if item.genres:
