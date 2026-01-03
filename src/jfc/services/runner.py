@@ -14,6 +14,9 @@ from jfc.clients.discord import DiscordWebhook
 from jfc.clients.jellyfin import JellyfinClient
 from jfc.clients.radarr import RadarrClient
 from jfc.clients.sonarr import SonarrClient
+from jfc.clients.signal import SignalClient
+from jfc.clients.signal import NotificationContext as SignalNotificationContext
+from jfc.clients.signal import TrendingItem as SignalTrendingItem
 from jfc.clients.telegram import NotificationContext, TelegramClient, TrendingItem
 from jfc.clients.tmdb import TMDbClient
 from jfc.clients.trakt import TraktClient
@@ -101,6 +104,16 @@ class Runner:
                 openai_api_key=settings.openai.api_key if settings.openai.enabled else None,
             )
             logger.info(f"Telegram notifications enabled ({len(settings.telegram.notifications)} notification(s))")
+
+        # Initialize Signal client (if configured)
+        self.signal: Optional[SignalClient] = None
+        if settings.signal.is_configured:
+            self.signal = SignalClient(
+                api_url=settings.signal.api_url,
+                phone_number=settings.signal.phone_number,
+                openai_api_key=settings.openai.api_key if settings.openai.enabled else None,
+            )
+            logger.info(f"Signal notifications enabled ({len(settings.signal.notifications)} notification(s))")
 
         # Initialize parser
         self.parser = KometaParser(settings.config_path)
@@ -408,6 +421,57 @@ class Runner:
                     await self.telegram.process_notification(notification, context)
                 except Exception as e:
                     logger.warning(f"Telegram notification '{notification.name}' failed: {e}")
+
+        # Process Signal notifications by trigger
+        if self.signal:
+            # Build context for Signal notifications (using Signal's dataclasses)
+            signal_films = [
+                SignalTrendingItem(
+                    title=f.title,
+                    year=f.year,
+                    genres=f.genres,
+                    poster_url=f.poster_url,
+                    tmdb_id=f.tmdb_id,
+                    available=f.available,
+                )
+                for f in trending_items["films"]
+            ]
+            signal_series = [
+                SignalTrendingItem(
+                    title=s.title,
+                    year=s.year,
+                    genres=s.genres,
+                    poster_url=s.poster_url,
+                    tmdb_id=s.tmdb_id,
+                    available=s.available,
+                )
+                for s in trending_items["series"]
+            ]
+
+            signal_context = SignalNotificationContext(
+                trigger="trending",
+                films=signal_films,
+                series=signal_series,
+                duration_seconds=run_report.duration_seconds,
+                collections_updated=run_report.successful_collections,
+                items_added=run_report.total_items_added,
+                items_removed=run_report.total_items_removed,
+            )
+
+            # Process "trending" trigger notifications
+            for notification in self.settings.signal.get_notifications_by_trigger("trending"):
+                try:
+                    await self.signal.process_notification(notification, signal_context)
+                except Exception as e:
+                    logger.warning(f"Signal notification '{notification.name}' failed: {e}")
+
+            # Process "run_end" trigger notifications
+            signal_context.trigger = "run_end"
+            for notification in self.settings.signal.get_notifications_by_trigger("run_end"):
+                try:
+                    await self.signal.process_notification(notification, signal_context)
+                except Exception as e:
+                    logger.warning(f"Signal notification '{notification.name}' failed: {e}")
 
         # Print and save report
         self.report_generator.print_run_report(run_report)

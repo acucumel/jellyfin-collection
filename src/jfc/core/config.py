@@ -237,6 +237,56 @@ class TelegramSettings(BaseModel):
         return [n for n in self.notifications if n.trigger == trigger and n.enabled]
 
 
+class SignalNotification(BaseModel):
+    """Configuration for a single Signal notification."""
+
+    name: str = Field(description="Unique name for this notification")
+    trigger: str = Field(
+        default="trending",
+        description="When to trigger: trending, new_items, run_end, manual"
+    )
+    recipient: str = Field(
+        description="Phone number (+33...) or group ID (group.XXX)"
+    )
+    prompt: str = Field(
+        default="",
+        description="GPT prompt to generate the notification message"
+    )
+    only_available: bool = Field(
+        default=True,
+        description="Only include items available in Jellyfin"
+    )
+    include_posters: bool = Field(
+        default=False,
+        description="Include poster images as attachments"
+    )
+    min_items: int = Field(
+        default=1,
+        description="Minimum items required to trigger notification"
+    )
+    enabled: bool = Field(default=True)
+
+
+class SignalSettings(BaseModel):
+    """Signal configuration for notifications via signal-cli-rest-api."""
+
+    # API URL (from .env or config.yml)
+    api_url: str = Field(default="http://localhost:8080")
+    # Registered phone number (from .env - secret)
+    phone_number: Optional[str] = Field(default=None)
+    # List of notification configurations
+    notifications: list[SignalNotification] = Field(default_factory=list)
+
+    @property
+    def is_configured(self) -> bool:
+        """Check if Signal is properly configured."""
+        return bool(self.api_url and self.phone_number and self.notifications)
+
+    def get_notifications_by_trigger(self, trigger: str) -> list[SignalNotification]:
+        """Get all enabled notifications for a specific trigger."""
+        return [n for n in self.notifications if n.trigger == trigger and n.enabled]
+
+
 class SchedulerSettings(BaseModel):
     """Scheduler configuration."""
 
@@ -309,6 +359,10 @@ class Settings(BaseSettings):
 
     # Telegram (bot_token from .env, notifications from config.yml)
     telegram_bot_token: Optional[str] = Field(default=None)
+
+    # Signal (phone_number from .env, api_url and notifications from config.yml)
+    signal_phone_number: Optional[str] = Field(default=None)
+    signal_api_url: str = Field(default="http://localhost:8080")
 
     # Scheduler
     scheduler_collections_cron: str = Field(default="0 3 * * *")
@@ -505,6 +559,41 @@ class Settings(BaseSettings):
 
         return TelegramSettings(
             bot_token=self.telegram_bot_token,
+            notifications=notifications,
+        )
+
+    @property
+    def signal(self) -> SignalSettings:
+        """Get Signal settings.
+
+        Phone number comes from env var, api_url and notifications from config.yml.
+        """
+        notifications = []
+        api_url = self.signal_api_url
+
+        # Load settings from config.yml
+        yaml_file = self.config_path / "config.yml"
+        if yaml_file.exists():
+            try:
+                with open(yaml_file, encoding="utf-8") as f:
+                    data = yaml.safe_load(f) or {}
+                signal_config = data.get("settings", {}).get("signal", {})
+
+                # API URL can be overridden in config.yml
+                if "api_url" in signal_config:
+                    api_url = signal_config["api_url"]
+
+                notif_list = signal_config.get("notifications", [])
+
+                for n in notif_list:
+                    if isinstance(n, dict) and "name" in n and "recipient" in n:
+                        notifications.append(SignalNotification(**n))
+            except Exception:
+                pass  # Silently ignore YAML errors here
+
+        return SignalSettings(
+            api_url=api_url,
+            phone_number=self.signal_phone_number,
             notifications=notifications,
         )
 

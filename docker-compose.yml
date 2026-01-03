@@ -42,6 +42,13 @@ services:
       # OpenAI (optionnel - génération posters IA)
       - OPENAI_API_KEY=${OPENAI_API_KEY:-}
 
+      # Telegram (optionnel - notifications)
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
+
+      # Signal (optionnel - notifications via signal-cli-rest-api)
+      - SIGNAL_PHONE_NUMBER=${SIGNAL_PHONE_NUMBER:-}
+      - SIGNAL_API_URL=${SIGNAL_API_URL:-http://signal:8080}
+
     volumes:
       # config.yml + fichiers YAML collections (lecture seule)
       - ./config:/config:ro
@@ -50,6 +57,41 @@ services:
       # Logs applicatifs
       - ./logs:/logs
 
+    networks:
+      - media-stack
+    depends_on:
+      signal:
+        condition: service_started
+        required: false
+
+  # ==========================================================================
+  # SIGNAL-CLI-REST-API (optionnel)
+  # ==========================================================================
+  # Container pour envoyer des messages Signal via API REST
+  # Documentation: https://github.com/bbernhard/signal-cli-rest-api
+  #
+  # SETUP INITIAL:
+  # 1. Démarrer le container: docker-compose up -d signal
+  # 2. Enregistrer un nouveau numéro:
+  #    curl -X POST 'http://localhost:8080/v1/register/+33XXXXXXXXX'
+  # 3. Vérifier avec le code SMS reçu:
+  #    curl -X POST 'http://localhost:8080/v1/register/+33XXXXXXXXX/verify/XXXXXX'
+  # 4. Ou lier à un appareil existant (QR code):
+  #    curl 'http://localhost:8080/v1/qrcodelink?device_name=JFC'
+  #
+  signal:
+    image: bbernhard/signal-cli-rest-api:latest
+    container_name: signal-cli
+    restart: unless-stopped
+    profiles:
+      - signal  # Activé avec: docker-compose --profile signal up
+    environment:
+      - MODE=native  # ou json-rpc pour plus de stabilité
+      - AUTO_RECEIVE_SCHEDULE=0 22 * * *  # Recevoir messages à 22h
+    volumes:
+      - ./data/signal-cli:/home/.local/share/signal-cli
+    ports:
+      - "8080:8080"  # Exposer si besoin d'accès externe
     networks:
       - media-stack
 

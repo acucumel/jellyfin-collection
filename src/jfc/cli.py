@@ -984,6 +984,173 @@ def test_telegram(
 
 
 @app.command()
+def test_signal(
+    message: Optional[str] = typer.Option(
+        None, "--message", "-m", help="Custom message to send (default: test message)"
+    ),
+    use_ai: bool = typer.Option(
+        True, "--ai/--no-ai", help="Use AI to generate Alfred-style message"
+    ),
+) -> None:
+    """Test Signal notification with sample data."""
+    settings = get_settings()
+    setup_logging(level="INFO")
+
+    # Check configuration
+    if not settings.signal.phone_number:
+        console.print("[red]Error:[/red] SIGNAL_PHONE_NUMBER not set in .env")
+        raise typer.Exit(1)
+
+    if not settings.signal.notifications:
+        console.print("[red]Error:[/red] No Signal notifications configured in config.yml")
+        console.print("\nAdd to config.yml under settings.signal.notifications:")
+        console.print("  - name: test")
+        console.print("    recipient: +33612345678  # or group.XXXXX")
+        raise typer.Exit(1)
+
+    from jfc.clients.signal import NotificationContext, SignalClient, TrendingItem
+
+    async def _test():
+        # Check signal-cli-rest-api health
+        client = SignalClient(
+            api_url=settings.signal.api_url,
+            phone_number=settings.signal.phone_number,
+            openai_api_key=settings.openai.api_key if use_ai and settings.openai.enabled else None,
+        )
+
+        console.print(f"[cyan]Checking signal-cli-rest-api at:[/cyan] {settings.signal.api_url}")
+        if not await client.health_check():
+            console.print("[red]Error:[/red] signal-cli-rest-api is not available")
+            console.print("Make sure the signal-cli-rest-api container is running")
+            raise typer.Exit(1)
+
+        console.print("[green]✓ signal-cli-rest-api is available[/green]")
+
+        # Sample data for testing (5 films, 5 series)
+        sample_films = [
+            TrendingItem(
+                title="Dune: Part Two",
+                year=2024,
+                genres=["Science-Fiction", "Aventure"],
+                poster_url="https://image.tmdb.org/t/p/w500/8b8R8l88Qje9dn9OE8PY05Nxl1X.jpg",
+                tmdb_id=693134,
+                available=True,
+            ),
+            TrendingItem(
+                title="Oppenheimer",
+                year=2023,
+                genres=["Drame", "Histoire"],
+                poster_url="https://image.tmdb.org/t/p/w500/8Gxv8gSFCU0XGDykEGv7zR1n2ua.jpg",
+                tmdb_id=872585,
+                available=True,
+            ),
+            TrendingItem(
+                title="Deadpool & Wolverine",
+                year=2024,
+                genres=["Action", "Comédie"],
+                poster_url="https://image.tmdb.org/t/p/w500/8cdWjvZQUExUUTzyp4t6EDMubfO.jpg",
+                tmdb_id=533535,
+                available=True,
+            ),
+            TrendingItem(
+                title="Inside Out 2",
+                year=2024,
+                genres=["Animation", "Famille"],
+                poster_url="https://image.tmdb.org/t/p/w500/vpnVM9B6NMmQpWeZvzLvDESb2QY.jpg",
+                tmdb_id=1022789,
+                available=True,
+            ),
+            TrendingItem(
+                title="Gladiator II",
+                year=2024,
+                genres=["Action", "Drame"],
+                poster_url="https://image.tmdb.org/t/p/w500/2cxhvwyEwRlysAmRH4iodkvo0z5.jpg",
+                tmdb_id=558449,
+                available=True,
+            ),
+        ]
+
+        sample_series = [
+            TrendingItem(
+                title="Shogun",
+                year=2024,
+                genres=["Drame", "Guerre"],
+                poster_url="https://image.tmdb.org/t/p/w500/7O4iVfOMQmdCSxhOg1WnzG1AgYT.jpg",
+                tmdb_id=126308,
+                available=True,
+            ),
+            TrendingItem(
+                title="Fallout",
+                year=2024,
+                genres=["Science-Fiction", "Action"],
+                poster_url="https://image.tmdb.org/t/p/w500/AnsSKR9LuK0T9bAOcPVA3PUvyWj.jpg",
+                tmdb_id=106379,
+                available=True,
+            ),
+            TrendingItem(
+                title="House of the Dragon",
+                year=2022,
+                genres=["Drame", "Fantasy"],
+                poster_url="https://image.tmdb.org/t/p/w500/7QMsOTMUswlwxJP0rTTZfmz2tX2.jpg",
+                tmdb_id=94997,
+                available=True,
+            ),
+            TrendingItem(
+                title="The Bear",
+                year=2022,
+                genres=["Drame", "Comédie"],
+                poster_url="https://image.tmdb.org/t/p/w500/sHFlbKS3WLqMnp9t6ghbYYyTtHq.jpg",
+                tmdb_id=136315,
+                available=True,
+            ),
+            TrendingItem(
+                title="Arcane",
+                year=2021,
+                genres=["Animation", "Action"],
+                poster_url="https://image.tmdb.org/t/p/w500/fqldf2t8ztc9aiwn3k6mlX3tvRT.jpg",
+                tmdb_id=94605,
+                available=True,
+            ),
+        ]
+
+        # Build context
+        context = NotificationContext(
+            trigger="trending",
+            films=sample_films,
+            series=sample_series,
+            duration_seconds=45.5,
+            collections_updated=3,
+            items_added=5,
+            items_removed=2,
+        )
+
+        # Get first notification config
+        notification = settings.signal.notifications[0]
+        console.print(f"[cyan]Testing notification:[/cyan] {notification.name}")
+        console.print(f"[cyan]Recipient:[/cyan] {notification.recipient}")
+        console.print(f"[cyan]AI enabled:[/cyan] {use_ai and settings.openai.enabled}")
+        console.print()
+
+        if message:
+            # Send custom message directly
+            success = await client.send_message(
+                recipient=notification.recipient,
+                text=message,
+            )
+        else:
+            # Use full notification processing
+            success = await client.process_notification(notification, context)
+
+        if success:
+            console.print("[green]✓ Test notification sent successfully![/green]")
+        else:
+            console.print("[red]✗ Failed to send notification[/red]")
+            raise typer.Exit(1)
+
+    asyncio.run(_test())
+
+
+@app.command()
 def version() -> None:
     """Show version information."""
     from jfc import __version__
