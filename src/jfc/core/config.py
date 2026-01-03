@@ -187,23 +187,54 @@ class DiscordSettings(BaseModel):
         return specific or self.webhook_url
 
 
+class TelegramNotification(BaseModel):
+    """Configuration for a single Telegram notification."""
+
+    name: str = Field(description="Unique name for this notification")
+    trigger: str = Field(
+        default="trending",
+        description="When to trigger: trending, new_items, run_end, manual"
+    )
+    chat_id: str = Field(description="Telegram chat ID")
+    thread_id: Optional[int] = Field(
+        default=None,
+        description="Message thread ID for forum topics"
+    )
+    prompt: str = Field(
+        default="",
+        description="GPT prompt to generate the notification message"
+    )
+    only_available: bool = Field(
+        default=True,
+        description="Only include items available in Jellyfin"
+    )
+    include_posters: bool = Field(
+        default=True,
+        description="Include poster images in media groups"
+    )
+    min_items: int = Field(
+        default=1,
+        description="Minimum items required to trigger notification"
+    )
+    enabled: bool = Field(default=True)
+
+
 class TelegramSettings(BaseModel):
     """Telegram bot configuration for notifications."""
 
+    # Bot token (from .env only - secret)
     bot_token: Optional[str] = Field(default=None)
-    chat_id: Optional[str] = Field(default=None)
-    # Topic/thread ID for forum groups (optional)
-    trending_thread_id: Optional[int] = Field(
-        default=None,
-        description="Message thread ID for trending notifications topic"
-    )
-    # Enable/disable Telegram notifications
-    enabled: bool = Field(default=False)
+    # List of notification configurations
+    notifications: list[TelegramNotification] = Field(default_factory=list)
 
     @property
     def is_configured(self) -> bool:
         """Check if Telegram is properly configured."""
-        return bool(self.bot_token and self.chat_id and self.enabled)
+        return bool(self.bot_token and self.notifications)
+
+    def get_notifications_by_trigger(self, trigger: str) -> list[TelegramNotification]:
+        """Get all enabled notifications for a specific trigger."""
+        return [n for n in self.notifications if n.trigger == trigger and n.enabled]
 
 
 class SchedulerSettings(BaseModel):
@@ -276,11 +307,8 @@ class Settings(BaseSettings):
     discord_webhook_run_end: Optional[str] = Field(default=None)
     discord_webhook_changes: Optional[str] = Field(default=None)
 
-    # Telegram
+    # Telegram (bot_token from .env, notifications from config.yml)
     telegram_bot_token: Optional[str] = Field(default=None)
-    telegram_chat_id: Optional[str] = Field(default=None)
-    telegram_trending_thread_id: Optional[int] = Field(default=None)
-    telegram_enabled: bool = Field(default=False)
 
     # Scheduler
     scheduler_collections_cron: str = Field(default="0 3 * * *")
@@ -454,12 +482,30 @@ class Settings(BaseSettings):
 
     @property
     def telegram(self) -> TelegramSettings:
-        """Get Telegram settings."""
+        """Get Telegram settings.
+
+        Bot token comes from env var, notifications from config.yml.
+        """
+        notifications = []
+
+        # Load notifications from config.yml
+        yaml_file = self.config_path / "config.yml"
+        if yaml_file.exists():
+            try:
+                with open(yaml_file, encoding="utf-8") as f:
+                    data = yaml.safe_load(f) or {}
+                telegram_config = data.get("settings", {}).get("telegram", {})
+                notif_list = telegram_config.get("notifications", [])
+
+                for n in notif_list:
+                    if isinstance(n, dict) and "name" in n and "chat_id" in n:
+                        notifications.append(TelegramNotification(**n))
+            except Exception:
+                pass  # Silently ignore YAML errors here
+
         return TelegramSettings(
             bot_token=self.telegram_bot_token,
-            chat_id=self.telegram_chat_id,
-            trending_thread_id=self.telegram_trending_thread_id,
-            enabled=self.telegram_enabled,
+            notifications=notifications,
         )
 
     @property
@@ -544,10 +590,12 @@ def log_settings(settings: "Settings") -> None:
 
     # Telegram
     logger.info("[Telegram]")
-    logger.info(f"  Enabled:     {settings.telegram_enabled}")
-    logger.info(f"  Bot Token:   {_mask_secret(settings.telegram_bot_token)}")
-    logger.info(f"  Chat ID:     {settings.telegram_chat_id or '(not set)'}")
-    logger.info(f"  Thread ID:   {settings.telegram_trending_thread_id or '(not set)'}")
+    telegram = settings.telegram
+    logger.info(f"  Bot Token:      {_mask_secret(telegram.bot_token)}")
+    logger.info(f"  Notifications:  {len(telegram.notifications)}")
+    for notif in telegram.notifications:
+        status = "✓" if notif.enabled else "✗"
+        logger.info(f"    {status} {notif.name} (trigger: {notif.trigger}, chat: {notif.chat_id})")
 
     # Scheduler
     logger.info("[Scheduler]")

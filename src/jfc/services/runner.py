@@ -14,7 +14,7 @@ from jfc.clients.discord import DiscordWebhook
 from jfc.clients.jellyfin import JellyfinClient
 from jfc.clients.radarr import RadarrClient
 from jfc.clients.sonarr import SonarrClient
-from jfc.clients.telegram import TelegramClient, TrendingItem
+from jfc.clients.telegram import NotificationContext, TelegramClient, TrendingItem
 from jfc.clients.tmdb import TMDbClient
 from jfc.clients.trakt import TraktClient
 from jfc.core.config import Settings
@@ -98,10 +98,9 @@ class Runner:
         if settings.telegram.is_configured:
             self.telegram = TelegramClient(
                 bot_token=settings.telegram.bot_token,
-                chat_id=settings.telegram.chat_id,
-                trending_thread_id=settings.telegram.trending_thread_id,
+                openai_api_key=settings.openai.api_key if settings.openai.enabled else None,
             )
-            logger.info("Telegram notifications enabled")
+            logger.info(f"Telegram notifications enabled ({len(settings.telegram.notifications)} notification(s))")
 
         # Initialize parser
         self.parser = KometaParser(settings.config_path)
@@ -286,6 +285,9 @@ class Runner:
                     # Collect trending items for Telegram notification
                     if self.telegram and "tendances" in config.name.lower():
                         category = "series" if media_type == MediaType.SERIES else "films"
+                        # Use collection.items (matched items) for availability info
+                        matched_ids = {i.tmdb_id for i in collection.items if i.matched}
+
                         for item in collection.source_items[:10]:
                             # Convert genres to strings
                             genre_strs = []
@@ -304,6 +306,7 @@ class Runner:
                                 genres=genre_strs if genre_strs else None,
                                 poster_url=TelegramClient.build_poster_url(item.poster_path),
                                 tmdb_id=item.tmdb_id,
+                                available=item.tmdb_id in matched_ids,
                             ))
 
                     # Sync to Jellyfin (or just posters if posters_only mode)
@@ -377,16 +380,33 @@ class Runner:
             sonarr_requests=run_report.total_sonarr_requests,
         )
 
-        # Send Telegram trending notification (if configured and has items)
-        if self.telegram and (trending_items["films"] or trending_items["series"]):
-            try:
-                await self.telegram.send_trending_notification(
-                    films=trending_items["films"],
-                    series=trending_items["series"],
-                )
-                logger.info("Telegram trending notification sent")
-            except Exception as e:
-                logger.warning(f"Failed to send Telegram notification: {e}")
+        # Process Telegram notifications by trigger
+        if self.telegram:
+            # Build context for notifications
+            context = NotificationContext(
+                trigger="trending",
+                films=trending_items["films"],
+                series=trending_items["series"],
+                duration_seconds=run_report.duration_seconds,
+                collections_updated=run_report.successful_collections,
+                items_added=run_report.total_items_added,
+                items_removed=run_report.total_items_removed,
+            )
+
+            # Process "trending" trigger notifications
+            for notification in self.settings.telegram.get_notifications_by_trigger("trending"):
+                try:
+                    await self.telegram.process_notification(notification, context)
+                except Exception as e:
+                    logger.warning(f"Telegram notification '{notification.name}' failed: {e}")
+
+            # Process "run_end" trigger notifications
+            context.trigger = "run_end"
+            for notification in self.settings.telegram.get_notifications_by_trigger("run_end"):
+                try:
+                    await self.telegram.process_notification(notification, context)
+                except Exception as e:
+                    logger.warning(f"Telegram notification '{notification.name}' failed: {e}")
 
         # Print and save report
         self.report_generator.print_run_report(run_report)
