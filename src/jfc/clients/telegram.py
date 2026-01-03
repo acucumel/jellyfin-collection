@@ -112,6 +112,35 @@ class TelegramClient:
     # TELEGRAM API METHODS
     # =========================================================================
 
+    @staticmethod
+    def _sanitize_text(text: str) -> str:
+        """
+        Sanitize text for Telegram API.
+
+        Removes unsupported HTML tags that GPT might generate.
+        Telegram only supports: <b>, <i>, <u>, <s>, <code>, <pre>, <a>
+        """
+        import re
+
+        # Replace <br/>, <br />, <br> with newlines
+        text = re.sub(r'<br\s*/?>', '\n', text, flags=re.IGNORECASE)
+
+        # Remove other unsupported HTML tags but keep content
+        # This regex removes tags that aren't in the allowed list
+        allowed_tags = r'b|i|u|s|code|pre|a|strong|em'
+        # Remove opening tags that aren't allowed
+        text = re.sub(r'<(?!/?)(?!' + allowed_tags + r')([^>]+)>', '', text, flags=re.IGNORECASE)
+        # Remove closing tags that aren't allowed
+        text = re.sub(r'</(?!' + allowed_tags + r')([^>]+)>', '', text, flags=re.IGNORECASE)
+
+        # Convert <strong> to <b> and <em> to <i>
+        text = re.sub(r'<strong>', '<b>', text, flags=re.IGNORECASE)
+        text = re.sub(r'</strong>', '</b>', text, flags=re.IGNORECASE)
+        text = re.sub(r'<em>', '<i>', text, flags=re.IGNORECASE)
+        text = re.sub(r'</em>', '</i>', text, flags=re.IGNORECASE)
+
+        return text
+
     async def _request(
         self,
         method: str,
@@ -160,6 +189,9 @@ class TelegramClient:
             parse_mode: HTML or Markdown
             disable_preview: Disable link previews
         """
+        # Sanitize text to remove unsupported HTML tags
+        text = self._sanitize_text(text)
+
         data: dict[str, Any] = {
             "chat_id": chat_id,
             "text": text,
@@ -210,7 +242,8 @@ class TelegramClient:
 
             # Add caption to first item only
             if i == 0 and caption:
-                media_item["caption"] = caption[:1024]  # Telegram limit
+                sanitized_caption = self._sanitize_text(caption)[:1024]  # Telegram limit
+                media_item["caption"] = sanitized_caption
                 media_item["parse_mode"] = "HTML"
 
             media.append(media_item)
