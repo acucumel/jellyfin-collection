@@ -856,7 +856,7 @@ def test_telegram(
             openai_api_key=settings.openai.api_key if use_ai and settings.openai.enabled else None,
         )
 
-        # Sample data for testing
+        # Sample data for testing (5 films, 5 series)
         sample_films = [
             TrendingItem(
                 title="Dune: Part Two",
@@ -880,7 +880,23 @@ def test_telegram(
                 genres=["Action", "Comédie"],
                 poster_url="https://image.tmdb.org/t/p/w500/8cdWjvZQUExUUTzyp4t6EDMubfO.jpg",
                 tmdb_id=533535,
-                available=False,
+                available=True,
+            ),
+            TrendingItem(
+                title="Inside Out 2",
+                year=2024,
+                genres=["Animation", "Famille"],
+                poster_url="https://image.tmdb.org/t/p/w500/vpnVM9B6NMmQpWeZvzLvDESb2QY.jpg",
+                tmdb_id=1022789,
+                available=True,
+            ),
+            TrendingItem(
+                title="Gladiator II",
+                year=2024,
+                genres=["Action", "Drame"],
+                poster_url="https://image.tmdb.org/t/p/w500/2cxhvwyEwRlysAmRH4iodkvo0z5.jpg",
+                tmdb_id=558449,
+                available=True,
             ),
         ]
 
@@ -899,7 +915,31 @@ def test_telegram(
                 genres=["Science-Fiction", "Action"],
                 poster_url="https://image.tmdb.org/t/p/w500/AnsSKR9LuK0T9bAOcPVA3PUvyWj.jpg",
                 tmdb_id=106379,
-                available=False,
+                available=True,
+            ),
+            TrendingItem(
+                title="House of the Dragon",
+                year=2022,
+                genres=["Drame", "Fantasy"],
+                poster_url="https://image.tmdb.org/t/p/w500/7QMsOTMUswlwxJP0rTTZfmz2tX2.jpg",
+                tmdb_id=94997,
+                available=True,
+            ),
+            TrendingItem(
+                title="The Bear",
+                year=2022,
+                genres=["Drame", "Comédie"],
+                poster_url="https://image.tmdb.org/t/p/w500/sHFlbKS3WLqMnp9t6ghbYYyTtHq.jpg",
+                tmdb_id=136315,
+                available=True,
+            ),
+            TrendingItem(
+                title="Arcane",
+                year=2021,
+                genres=["Animation", "Action"],
+                poster_url="https://image.tmdb.org/t/p/w500/fqldf2t8ztc9aiwn3k6mlX3tvRT.jpg",
+                tmdb_id=94605,
+                available=True,
             ),
         ]
 
