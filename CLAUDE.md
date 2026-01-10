@@ -244,7 +244,7 @@ pytest --cov=jfc --cov-report=html
 
 - GitHub Actions workflow builds Docker images on push/tag
 - Multi-platform: linux/amd64, linux/arm64
-- Images pushed to ghcr.io/acucumel/jellyfin-collection
+- Images pushed to ghcr.io/4lx69/jellyfin-collection
 - Tags: latest (main branch), semantic versions (v1.0.0, v1.0, v1)
 
 ## AI Models
@@ -256,5 +256,5 @@ pytest --cov=jfc --cov-report=html
 ## Context
 
 - Current year: 2025
-- Author: Alexis CUCUMEL
+- Author: 4lx69
 - License: MIT (2025-2026)

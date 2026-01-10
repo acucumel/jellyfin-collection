@@ -45,7 +45,7 @@ class YamlSettingsSource(PydanticBaseSettingsSource):
             raise FileNotFoundError(
                 f"Configuration file not found: {self.yaml_file}\n"
                 f"Please create a config.yml file in your config directory.\n"
-                f"See documentation: https://github.com/acucumel/jellyfin-collection#configuration"
+                f"See documentation: https://github.com/4lx69/jellyfin-collection#configuration"
             )
 
         try:

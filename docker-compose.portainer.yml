@@ -2,7 +2,7 @@
 # JELLYFIN COLLECTION - Docker Compose pour Portainer
 # =============================================================================
 # Utiliser avec Portainer Stacks + GitHub integration
-# Image: ghcr.io/acucumel/jellyfin-collection:latest
+# Image: ghcr.io/4lx69/jellyfin-collection:latest
 #
 # Configuration principale dans config/config.yml (monté en volume)
 # Variables à configurer dans Portainer: seulement les API keys (secrets)
@@ -10,7 +10,7 @@
 
 services:
   jellyfin-collection:
-    image: ghcr.io/acucumel/jellyfin-collection:latest
+    image: ghcr.io/4lx69/jellyfin-collection:latest
     container_name: jellyfin-collection
     restart: unless-stopped
 

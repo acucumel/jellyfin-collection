@@ -1,9 +1,9 @@
 # Jellyfin Collection (JFC)
 
-[![Docker Build](https://github.com/acucumel/jellyfin-collection/actions/workflows/docker-build.yml/badge.svg)](https://github.com/acucumel/jellyfin-collection/actions/workflows/docker-build.yml)
+[![Docker Build](https://github.com/4lx69/jellyfin-collection/actions/workflows/docker-build.yml/badge.svg)](https://github.com/4lx69/jellyfin-collection/actions/workflows/docker-build.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![Docker Pulls](https://img.shields.io/docker/pulls/acucumel/jellyfin-collection)](https://github.com/acucumel/jellyfin-collection/pkgs/container/jellyfin-collection)
+[![Docker Pulls](https://img.shields.io/docker/pulls/4lx69/jellyfin-collection)](https://github.com/4lx69/jellyfin-collection/pkgs/container/jellyfin-collection)
 
 <p align="center">
   <img src="docs/doc-image-1.png" width="48%" alt="JFC Screenshot 1" />
@@ -31,7 +31,7 @@ If you're migrating from Plex and miss [Kometa](https://github.com/Kometa-Team/K
 
 ```bash
 # Pull the image
-docker pull ghcr.io/acucumel/jellyfin-collection:latest
+docker pull ghcr.io/4lx69/jellyfin-collection:latest
 
 # Or use docker-compose
 docker-compose up -d
@@ -43,7 +43,7 @@ See [Installation Guide](docs/installation.md) for detailed setup instructions.
 
 ```bash
 # Clone the repository
-git clone https://github.com/acucumel/jellyfin-collection.git
+git clone https://github.com/4lx69/jellyfin-collection.git
 cd jellyfin-collection
 
 # Install dependencies
@@ -206,7 +206,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 MIT License
 
-Copyright (c) 2025-2026 Alexis CUCUMEL
+Copyright (c) 2025-2026 4lx69
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
 

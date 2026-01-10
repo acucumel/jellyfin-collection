@@ -2,8 +2,8 @@
 # GitHub Actions - Build & Push Docker Image
 # =============================================================================
 # Triggers:
-#   - Push to main/master branch -> ghcr.io/acucumel/jellyfin-collection:latest
-#   - Push tag v*.*.* -> ghcr.io/acucumel/jellyfin-collection:v1.0.0, :v1.0, :v1
+#   - Push to main/master branch -> ghcr.io/4lx69/jellyfin-collection:latest
+#   - Push tag v*.*.* -> ghcr.io/4lx69/jellyfin-collection:v1.0.0, :v1.0, :v1
 #   - Manual workflow dispatch
 # =============================================================================
 

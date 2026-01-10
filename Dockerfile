@@ -5,7 +5,7 @@
 FROM python:3.11-slim AS base
 
 # Labels
-LABEL maintainer="Alexis CUCUMEL"
+LABEL maintainer="4lx69"
 LABEL description="Kometa-compatible collection manager for Jellyfin"
 
 # Environment

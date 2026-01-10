@@ -44,7 +44,7 @@ mkdir -p config data logs
 ```yaml
 services:
   jellyfin-collection:
-    image: ghcr.io/acucumel/jellyfin-collection:latest
+    image: ghcr.io/4lx69/jellyfin-collection:latest
     container_name: jellyfin-collection
     restart: unless-stopped
     environment:
@@ -146,7 +146,7 @@ docker-compose logs -f
 1. Go to **Stacks** > **Add stack**
 
 2. Select **Repository** and enter:
-   - Repository URL: `https://github.com/acucumel/jellyfin-collection`
+   - Repository URL: `https://github.com/4lx69/jellyfin-collection`
    - Compose path: `docker-compose.portainer.yml`
 
 3. Add **Environment variables** in the Portainer UI:
@@ -173,7 +173,7 @@ docker run -d \
   -v $(pwd)/config:/config:ro \
   -v $(pwd)/data:/data \
   -v $(pwd)/logs:/logs \
-  ghcr.io/acucumel/jellyfin-collection:latest
+  ghcr.io/4lx69/jellyfin-collection:latest
 ```
 
 ## Manual Installation
@@ -188,7 +188,7 @@ docker run -d \
 1. **Clone the repository**
 
 ```bash
-git clone https://github.com/acucumel/jellyfin-collection.git
+git clone https://github.com/4lx69/jellyfin-collection.git
 cd jellyfin-collection
 ```
 
